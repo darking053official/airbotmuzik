@@ -1,0 +1,18 @@
+{
+  "name": "jubbio-muzik-botu",
+  "version": "1.0.0",
+  "description": "Jubbio için müzik botu",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@jubbio/core": "^1.0.0",
+    "@jubbio/voice": "^1.0.0"
+  },
+  "engines": {
+    "node": "16.x"
+  },
+  "author": "darking053official",
+  "license": "MIT"
+}
