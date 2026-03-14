@@ -8,12 +8,9 @@
   },
   "dependencies": {
     "@jubbio/core": "^1.0.0",
-    "@jubbio/voice": "^1.1.0",
-    "node-fetch": "^2.6.7"
+    "@jubbio/voice": "^1.1.0"
   },
   "engines": {
     "node": "18.x"
-  },
-  "author": "darking053official",
-  "license": "MIT"
+  }
 }
