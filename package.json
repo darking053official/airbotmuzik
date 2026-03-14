@@ -1,5 +1,5 @@
 {
-  "name": "jubbio-muzik-botu",
+  "name": "jubbio-bot",
   "version": "1.0.0",
   "description": "Jubbio müzik botu",
   "main": "index.js",
@@ -9,8 +9,5 @@
   "dependencies": {
     "@jubbio/core": "^1.0.0",
     "@jubbio/voice": "^1.1.0"
-  },
-  "engines": {
-    "node": "18.x"
   }
 }
