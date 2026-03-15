@@ -1,9 +1,9 @@
-const config = require('../config');
+const config = require('../../config');
 
 module.exports = {
   name: 'skip',
   description: 'Sonraki şarkıya geçer',
-  aliases: ['gec', 'next'],
+  aliases: ['gec', 'next', 's'],
   cooldown: 3,
   
   async execute(message, args, client) {
