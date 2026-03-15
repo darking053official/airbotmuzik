@@ -1,29 +1,95 @@
-import { playStream } from "@jubbio/voice"
+const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus } = require('@jubbio/voice');
 
-export default {
-  name: "play",
-  permissions: ["SendMessages"],
+module.exports = {
+  name: 'play',
+  description: 'Müzik çalar',
+  cooldown: 5,
+  async execute(message, args, client) {
+    const voiceChannel = message.member?.voice?.channel;
+    if (!voiceChannel) {
+      return message.reply('❌ Önce ses kanalına gir!');
+    }
 
-  async execute(ctx) {
-    const query = ctx.args.join(" ")
-    if(!query) return ctx.reply("❌ Şarkı adı veya link yaz")
+    const url = args[0];
+    if (!url) {
+      return message.reply('❌ Şu şekilde kullan: !play <youtube-url>');
+    }
 
-    if(!ctx.guildSettings.queue) ctx.guildSettings.queue = []
+    // Botun kendisinin kanalda olma izni var mı?
+    const permissions = voiceChannel.permissionsFor(message.client.user);
+    if (!permissions.has('CONNECT') || !permissions.has('SPEAK')) {
+      return message.reply('❌ Ses kanalında konuşma iznim yok!');
+    }
 
-    ctx.guildSettings.queue.push(query)
+    // Kuyruk oluştur
+    const serverQueue = client.queue.get(message.guild.id);
+    
+    if (!serverQueue) {
+      // Yeni kuyruk
+      const queueConstruct = {
+        textChannel: message.channel,
+        voiceChannel: voiceChannel,
+        connection: null,
+        songs: [],
+        volume: 5,
+        playing: true,
+        player: createAudioPlayer()
+      };
 
-    if(!ctx.guildSettings.isPlaying){
-      ctx.guildSettings.isPlaying = true
-      while(ctx.guildSettings.queue.length > 0){
-        const song = ctx.guildSettings.queue.shift()
-        try{
-          await playStream(ctx, song)
-          ctx.reply("🎵 Çalıyor: " + song)
-        }catch{
-          ctx.reply("❌ Müzik bulunamadı: " + song)
-        }
+      client.queue.set(message.guild.id, queueConstruct);
+      queueConstruct.songs.push(url);
+
+      try {
+        const connection = joinVoiceChannel({
+          channelId: voiceChannel.id,
+          guildId: message.guild.id,
+          adapterCreator: message.guild.voiceAdapterCreator
+        });
+        
+        queueConstruct.connection = connection;
+        connection.subscribe(queueConstruct.player);
+        
+        // Şarkıyı çal
+        await playSong(message.guild.id, queueConstruct.songs[0], client);
+        
+        return message.reply(`🎵 **Müzik çalınıyor:** ${url}`);
+      } catch (err) {
+        console.error(err);
+        client.queue.delete(message.guild.id);
+        return message.reply('❌ Kanala bağlanamadım!');
       }
-      ctx.guildSettings.isPlaying = false
+    } else {
+      serverQueue.songs.push(url);
+      return message.reply(`🎵 Şarkı kuyruğa eklendi! Sırada **${serverQueue.songs.length}** şarkı var.`);
     }
   }
-}
+};
+
+async function playSong(guildId, song, client) {
+  const serverQueue = client.queue.get(guildId);
+  if (!song) {
+    serverQueue.connection.destroy();
+    client.queue.delete(guildId);
+    return;
+  }
+
+  try {
+    const resource = createAudioResource(song);
+    serverQueue.player.play(resource);
+    
+    serverQueue.player.on(AudioPlayerStatus.Idle, () => {
+      serverQueue.songs.shift();
+      playSong(guildId, serverQueue.songs[0], client);
+    });
+
+    serverQueue.player.on('error', error => {
+      console.error(error);
+      serverQueue.songs.shift();
+      playSong(guildId, serverQueue.songs[0], client);
+    });
+  } catch (error) {
+    console.error(error);
+    serverQueue.songs.shift();
+    playSong(guildId, serverQueue.songs[0], client);
+  }
+          }
