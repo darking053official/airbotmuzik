@@ -1,34 +1,39 @@
 module.exports = {
   name: 'queue',
   description: 'Kuyruktaki şarkıları gösterir',
-  aliases: ['q', 'sira'],
-  cooldown: 3,
+  aliases: ['sira', 'q', 'liste', 'kuyruk'],
+  cooldown: 5,
+  
   async execute(message, args, client) {
-    const serverQueue = client.queue.get(message.guild.id);
+    const serverQueue = client.queue?.get(message.guild.id);
     
     if (!serverQueue || serverQueue.songs.length === 0) {
       return message.reply('📭 **Kuyruk boş!**');
     }
 
-    let queueList = '📋 **Kuyruktaki şarkılar:**\n\n';
+    let queueList = '🎵 **Kuyruktaki şarkılar:**\n\n';
     
-    for (let i = 0; i < Math.min(serverQueue.songs.length, 10); i++) {
+    // En fazla 10 şarkı göster
+    const maxShow = Math.min(serverQueue.songs.length, 10);
+    
+    for (let i = 0; i < maxShow; i++) {
       const song = serverQueue.songs[i];
-      const shortUrl = song.length > 40 ? song.substring(0, 40) + '...' : song;
+      const shortUrl = song.length > 50 ? song.substring(0, 50) + '...' : song;
       
       if (i === 0) {
         queueList += `▶️ **Şu an:** ${shortUrl}\n`;
       } else {
-        queueList += `${i}. ${shortUrl}\n`;
+        queueList += `   ${i}. ${shortUrl}\n`;
       }
     }
     
+    // Kalan şarkı sayısını göster
     if (serverQueue.songs.length > 10) {
-      queueList += `\n...ve ${serverQueue.songs.length - 10} şarkı daha.`;
+      queueList += `\n...ve **${serverQueue.songs.length - 10} şarkı** daha.`;
     }
     
-    queueList += `\n\n**Toplam:** ${serverQueue.songs.length} şarkı`;
+    queueList += `\n\n📊 **Toplam:** ${serverQueue.songs.length} şarkı`;
     
-    await message.reply(queueList);
+    return message.reply(queueList);
   }
 };
