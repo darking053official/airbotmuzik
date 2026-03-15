@@ -3,17 +3,16 @@ const config = require('../config');
 module.exports = {
   name: 'queue',
   description: 'Kuyruktaki şarkıları gösterir',
-  aliases: ['sira', 'q', 'liste', 'kuyruk'],
+  aliases: ['sira', 'q', 'liste'],
   cooldown: 5,
   
   async execute(message, args, client) {
     const serverQueue = client.queue?.get(message.guild.id);
-    
     if (!serverQueue || serverQueue.songs.length === 0) {
       return message.reply(config.messages.queueEmpty);
     }
 
-    let queueList = '🎵 **Kuyruktaki şarkılar:**\n\n';
+    let queueList = `${config.emojis?.queue || '📋'} **Kuyruktaki şarkılar:**\n\n`;
     
     const maxShow = Math.min(serverQueue.songs.length, 10);
     
@@ -22,7 +21,7 @@ module.exports = {
       const shortUrl = song.length > 50 ? song.substring(0, 50) + '...' : song;
       
       if (i === 0) {
-        queueList += `▶️ **Şu an:** ${shortUrl}\n`;
+        queueList += `${config.emojis?.play || '▶️'} **Şu an:** ${shortUrl}\n`;
       } else {
         queueList += `   ${i}. ${shortUrl}\n`;
       }
