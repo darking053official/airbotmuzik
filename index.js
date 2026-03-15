@@ -1,6 +1,7 @@
 const { Client, GatewayIntentBits, Collection } = require('@jubbio/core');
 const fs = require('fs');
 const path = require('path');
+const config = require('./config');
 
 const client = new Client({
   intents: [
@@ -13,8 +14,8 @@ const client = new Client({
 
 // Koleksiyonlar
 client.commands = new Collection();
-client.queue = new Map();        // Müzik kuyruğu
-client.djRoles = new Map();      // DJ rolleri (geçici)
+client.queue = new Map();
+client.djRoles = new Map();
 client.cooldowns = new Collection();
 
 // Komutları yükle
@@ -29,8 +30,6 @@ try {
     if (command.name) {
       client.commands.set(command.name, command);
       console.log(`✅ Komut yüklendi: ${command.name}`);
-    } else {
-      console.log(`⚠️ ${file} geçersiz komut formatı`);
     }
   }
   
@@ -52,9 +51,9 @@ client.on('ready', () => {
 // Mesajları dinle
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
-  if (!message.content.startsWith('!')) return;
+  if (!message.content.startsWith(config.prefix)) return;
 
-  const args = message.content.slice(1).trim().split(/ +/);
+  const args = message.content.slice(config.prefix.length).trim().split(/ +/);
   const commandName = args.shift().toLowerCase();
 
   const command = client.commands.get(commandName) || 
@@ -86,19 +85,12 @@ client.on('messageCreate', async (message) => {
     setTimeout(() => timestamps.delete(message.author.id), cooldownAmount);
   } catch (error) {
     console.error(`❌ ${command.name} hatası:`, error);
-    message.reply('❌ Komut çalıştırılırken bir hata oluştu!').catch(() => {});
+    message.reply(config.messages.commandError).catch(() => {});
   }
 });
 
-// Token
-const BOT_TOKEN = process.env.BOT_TOKEN || 'c8cdb437d9bff10e41c5cebd4600473ced13285936de75ec6ab4397c50613cc0';
-if (!BOT_TOKEN) {
-  console.error('❌ BOT_TOKEN bulunamadı!');
-  process.exit(1);
-}
-
 // Botu başlat
-client.login(BOT_TOKEN).then(() => {
+client.login(config.token).then(() => {
   console.log('🔌 Bot başlatılıyor...');
 }).catch(err => {
   console.error('❌ Bot başlatılamadı:', err.message);
