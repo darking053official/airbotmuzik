@@ -1,5 +1,5 @@
 const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus } = require('@jubbio/voice');
-const config = require('../config');
+const config = require('../../config');
 
 module.exports = {
   name: 'play',
@@ -142,4 +142,4 @@ async function playSong(guildId, song, client) {
     serverQueue.songs.shift();
     playSong(guildId, serverQueue.songs[0], client);
   }
-                                }
+      }
