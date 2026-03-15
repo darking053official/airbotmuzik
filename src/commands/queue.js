@@ -1,4 +1,4 @@
-const config = require('../config');
+const config = require('../../config');
 
 module.exports = {
   name: 'queue',
@@ -12,8 +12,7 @@ module.exports = {
       return message.reply(config.messages.queueEmpty);
     }
 
-    let queueList = `${config.emojis?.queue || '📋'} **Kuyruktaki şarkılar:**\n\n`;
-    
+    let queueList = `${config.emojis.queue} **Kuyruktaki şarkılar:**\n\n`;
     const maxShow = Math.min(serverQueue.songs.length, 10);
     
     for (let i = 0; i < maxShow; i++) {
@@ -21,7 +20,7 @@ module.exports = {
       const shortUrl = song.length > 50 ? song.substring(0, 50) + '...' : song;
       
       if (i === 0) {
-        queueList += `${config.emojis?.play || '▶️'} **Şu an:** ${shortUrl}\n`;
+        queueList += `${config.emojis.play} **Şu an:** ${shortUrl}\n`;
       } else {
         queueList += `   ${i}. ${shortUrl}\n`;
       }
@@ -32,7 +31,6 @@ module.exports = {
     }
     
     queueList += `\n\n📊 **Toplam:** ${serverQueue.songs.length} şarkı`;
-    
     return message.reply(queueList);
   }
 };
