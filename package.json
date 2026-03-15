@@ -1,20 +1,17 @@
 {
   "name": "jubbio-muzik-botu",
-  "version": "1.0.0",
-  "description": "Jubbio için müzik botu",
+  "version": "2.0.0",
+  "description": "Jubbio müzik botu - Son sürüm",
   "main": "index.js",
-  "type": "module",
-  "author": "Darking053official",
-  "license": "MIT",
-  "engines": {
-    "node": ">=16.0.0"
-  },
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "dev": "node index.js"
   },
   "dependencies": {
     "@jubbio/core": "^1.0.0",
-    "@jubbio/voice": "^1.0.0",
-    "play-dl": "^1.0.0"
+    "@jubbio/voice": "^1.0.0"
+  },
+  "engines": {
+    "node": "16.x"
   }
 }
