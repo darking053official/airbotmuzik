@@ -22,11 +22,6 @@ desktop.ini
 logs/
 *.log.*
 
-# Render ve deploy dosyaları
-render.yaml
-Dockerfile
-.dockerignore
-
 # Editor dosyaları
 .vscode/
 .idea/
@@ -36,3 +31,18 @@ Dockerfile
 tmp/
 temp/
 *.tmp
+
+# Render ve deploy
+render.yaml
+Dockerfile
+.dockerignore
+
+# Bot verileri (eğer database kullanırsan)
+*.db
+*.sqlite
+database.json
+config.local.js
+
+# GitHub'dan hariç tut ama klasör yapısını koru
+commands/
+!commands/*.js
