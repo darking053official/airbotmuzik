@@ -1,9 +1,13 @@
 module.exports = {
+  // Bot Token - Render'dan veya direkt buraya yaz
   token: process.env.BOT_TOKEN || '9ad08124af59f0853aeda02a62ac722c26c43d7578e0981d8927d3b9e26ad900',
+  
+  // Ana ayarlar
   prefix: '!',
   defaultVolume: 50,
   maxQueueSize: 100,
   
+  // DJ Rolü Ayarları
   djRole: {
     enabled: true,
     roleName: 'DJ',
@@ -11,6 +15,7 @@ module.exports = {
     adminBypass: true
   },
   
+  // Ses Ayarları
   voice: {
     selfDeaf: false,
     selfMute: false,
@@ -19,6 +24,7 @@ module.exports = {
     leaveOnFinish: false
   },
   
+  // Mesajlar
   messages: {
     notInVoiceChannel: '❌ **Önce bir ses kanalına girmelisin!**',
     noMusicPlaying: '❌ **Şu an müzik çalmıyor!**',
@@ -37,6 +43,7 @@ module.exports = {
     commandError: '❌ **Komut çalıştırılırken hata oluştu!**'
   },
   
+  // Emojiler
   emojis: {
     play: '▶️',
     pause: '⏸️',
