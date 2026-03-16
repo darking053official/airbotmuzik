@@ -2,6 +2,18 @@ const { Client, GatewayIntentBits, Collection } = require('@jubbio/core');
 const fs = require('fs');
 const path = require('path');
 
+// FETCH POLYFILL - Node.js eski versiyonları için
+try {
+  if (!globalThis.fetch) {
+    globalThis.fetch = require('node-fetch');
+    console.log('✅ fetch polyfill yüklendi');
+  }
+} catch (e) {
+  console.log('⚠️ node-fetch yüklü değil, fetch kullanılamayacak');
+  // Alternatif fetch tanımı
+  globalThis.fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
+}
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
