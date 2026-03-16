@@ -9,7 +9,8 @@
   },
   "dependencies": {
     "@jubbio/core": "1.1.18",
-    "@jubbio/voice": "1.0.9"
+    "@jubbio/voice": "1.0.9",
+    "node-fetch": "^2.6.7"
   },
   "engines": {
     "node": "16.x"
@@ -24,6 +25,11 @@
     "jubbio",
     "music-bot",
     "discord-like",
-    "bot"
-  ]
+    "bot",
+    "müzik-botu"
+  ],
+  "bugs": {
+    "url": "https://github.com/darking053official/Jubbio-bot/issues"
+  },
+  "homepage": "https://github.com/darking053official/Jubbio-bot#readme"
 }
