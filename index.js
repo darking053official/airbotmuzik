@@ -2,6 +2,17 @@ const { Client, GatewayIntentBits, Collection } = require('@jubbio/core');
 const fs = require('fs');
 const path = require('path');
 
+// FETCH POLYFILL - Node.js eski versiyonları için
+try {
+  if (!globalThis.fetch) {
+    globalThis.fetch = require('node-fetch');
+    console.log('✅ fetch polyfill yüklendi');
+  }
+} catch (e) {
+  console.log('⚠️ node-fetch yüklü değil, fetch kullanılamayacak');
+  globalThis.fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
+}
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -14,9 +25,8 @@ const client = new Client({
 
 // Koleksiyonlar
 client.commands = new Collection();
-client.queue = new Map();        // Müzik kuyruğu
-client.cooldowns = new Collection(); // Spam koruması
-client.settings = new Map();      // Sunucu ayarları
+client.queue = new Map();
+client.cooldowns = new Collection();
 
 // Komutları src/commands klasöründen yükle
 const commandsPath = path.join(__dirname, 'src', 'commands');
@@ -57,30 +67,72 @@ try {
   process.exit(1);
 }
 
-// Slash komutlarını kaydet
-client.on('ready', async () => {
+// Bot hazır olduğunda
+client.once('ready', () => {
   console.log('=================================');
   console.log('✅ MÜZİK BOTU ÇALIŞIYOR!');
   console.log(`📢 Bot adı: ${client.user?.username}`);
   console.log(`📢 Bot ID: ${client.user?.id}`);
   console.log(`📢 Komut sayısı: ${client.commands.size}`);
   console.log('=================================');
+});
+
+// Slash komutlarını kaydet (GUARANTEED VERSION)
+client.on('ready', async () => {
+  // client.application'ın hazır olması için bekle
+  let attempts = 0;
+  const maxAttempts = 10;
   
-  const commands = [];
-  client.commands.forEach(cmd => {
-    commands.push({
-      name: cmd.name,
-      description: cmd.description || `${cmd.name} komutu`,
-      options: cmd.options || []
-    });
-  });
-  
+  while (!client.application && attempts < maxAttempts) {
+    console.log(`⏳ Application hazır değil, bekleniyor... (${attempts + 1}/${maxAttempts})`);
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    attempts++;
+  }
+
+  if (!client.application) {
+    console.error('❌ client.application hazır olmadı!');
+    return;
+  }
+
   try {
+    const commands = [];
+    client.commands.forEach(cmd => {
+      commands.push({
+        name: cmd.name,
+        description: cmd.description || `${cmd.name} komutu`,
+        options: cmd.options || []
+      });
+    });
+    
+    console.log(`📝 ${commands.length} komut kaydediliyor...`);
+    
+    // Mevcut komutları temizle
+    await client.application.commands.set([]);
+    
+    // Yeni komutları kaydet
     await client.application.commands.set(commands);
-    console.log(`✅ ${commands.length} slash komut kaydedildi`);
+    
+    console.log(`✅ ${commands.length} slash komut başarıyla kaydedildi!`);
     console.log(`📢 /yardim yazıp komutları görebilirsin`);
+    
   } catch (error) {
     console.error('❌ Slash komut kaydetme hatası:', error.message);
+    
+    // Alternatif: Tek tek kaydetmeyi dene
+    console.log('🔄 Tek tek kaydetme deneniyor...');
+    
+    for (const cmd of client.commands.values()) {
+      try {
+        await client.application.commands.create({
+          name: cmd.name,
+          description: cmd.description || `${cmd.name} komutu`,
+          options: cmd.options || []
+        });
+        console.log(`✅ /${cmd.name} kaydedildi`);
+      } catch (err) {
+        console.log(`❌ /${cmd.name} kaydedilemedi:`, err.message);
+      }
+    }
   }
 });
 
@@ -118,26 +170,28 @@ client.on('interactionCreate', async (interaction) => {
     setTimeout(() => timestamps.delete(interaction.user.id), cooldownAmount);
   } catch (error) {
     console.error(`❌ /${command.name} hatası:`, error);
+    
     const errorMsg = { 
       content: '❌ **Komut çalıştırılırken hata oluştu!**', 
       ephemeral: true 
     };
     
     if (interaction.replied || interaction.deferred) {
-      await interaction.followUp(errorMsg);
+      await interaction.followUp(errorMsg).catch(() => {});
     } else {
-      await interaction.reply(errorMsg);
+      await interaction.reply(errorMsg).catch(() => {});
     }
   }
 });
 
-// Token
+// Token kontrolü
 const BOT_TOKEN = '9ad08124af59f0853aeda02a62ac722c26c43d7578e0981d8927d3b9e26ad900';
 if (!BOT_TOKEN) {
   console.error('❌ Token bulunamadı!');
   process.exit(1);
 }
 
+// Botu başlat
 client.login(BOT_TOKEN).catch(err => {
   console.error('❌ Bot başlatılamadı:', err.message);
   process.exit(1);
