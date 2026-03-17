@@ -57,6 +57,7 @@ try {
 
 // Token
 const BOT_TOKEN = '9ad08124af59f0853aeda02a62ac722c26c43d7578e0981d8927d3b9e26ad900';
+const APP_ID = '552486601809203200'; // Application ID
 
 // REST API ile slash komutlarını kaydet
 async function registerSlashCommands() {
@@ -72,40 +73,32 @@ async function registerSlashCommands() {
       });
     });
 
-    // Jubbio API endpoint'i - BURAYI JUBBIO'YA GÖRE AYARLA
-    const response = await fetch('https://gateway.jubbio.com/api/v1/applications/@me/commands', {
-      method: 'PUT',
-      headers: {
-        'Authorization': `Bot ${BOT_TOKEN}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(commands)
-    });
-
-    if (response.ok) {
-      const data = await response.json();
-      console.log(`✅ ${data.length} slash komut REST API ile kaydedildi!`);
-    } else {
-      const text = await response.text();
-      console.log(`❌ REST API hatası (${response.status}):`, text);
-      
-      // Alternatif endpoint dene
-      console.log('🔄 Alternatif endpoint deneniyor...');
-      const altResponse = await fetch(`https://gateway.jubbio.com/api/v1/applications/552486601809203200/commands`, {
-        method: 'PUT',
+    // 1. POST ile dene (TEK TEK EKLEME)
+    console.log('📝 POST ile tek tek ekleniyor...');
+    
+    for (const cmd of commands) {
+      const response = await fetch(`https://gateway.jubbio.com/api/v1/applications/${APP_ID}/commands`, {
+        method: 'POST',
         headers: {
           'Authorization': `Bot ${BOT_TOKEN}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(commands)
+        body: JSON.stringify(cmd)
       });
-      
-      if (altResponse.ok) {
-        console.log(`✅ ${commands.length} slash komut kaydedildi!`);
+
+      if (response.ok) {
+        console.log(`✅ /${cmd.name} kaydedildi`);
       } else {
-        console.log('❌ Alternatif de çalışmadı');
+        const text = await response.text();
+        console.log(`❌ /${cmd.name} kaydedilemedi: ${response.status}`, text);
       }
+      
+      // Rate limit için bekle
+      await new Promise(resolve => setTimeout(resolve, 1000));
     }
+
+    console.log('✅ Tüm komut kaydetme işlemi tamamlandı!');
+    
   } catch (error) {
     console.error('❌ REST API bağlantı hatası:', error.message);
   }
@@ -128,7 +121,9 @@ client.on('interactionCreate', async (interaction) => {
   if (!interaction.isCommand()) return;
   
   const command = client.commands.get(interaction.commandName);
-  if (!command) return;
+  if (!command) {
+    return interaction.reply({ content: '❌ **Komut bulunamadı!**', ephemeral: true });
+  }
   
   // Cooldown
   if (!client.cooldowns.has(command.name)) {
