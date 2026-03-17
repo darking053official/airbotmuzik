@@ -1,16 +1,27 @@
 module.exports = {
   name: 'skip',
   description: 'Sonraki şarkıya geçer',
-  aliases: ['gec', 'next'],
+  cooldown: 2,
   
-  async execute(message, args, client) {
-    const serverQueue = client.queue.get(message.guild.id);
+  async execute(interaction, client) {
+    const serverQueue = client.queue.get(interaction.guild.id);
     
-    if (!serverQueue || !serverQueue.songs.length) {
-      return message.reply('❌ **Çalan müzik yok!**');
+    if (!serverQueue || !serverQueue.songs || !serverQueue.songs.length) {
+      return interaction.reply({ 
+        content: '❌ **Çalan müzik yok!**', 
+        ephemeral: true 
+      });
+    }
+
+    if (serverQueue.songs.length === 1) {
+      serverQueue.songs = [];
+      serverQueue.player?.stop();
+      serverQueue.connection?.destroy();
+      client.queue.delete(interaction.guild.id);
+      return interaction.reply('⏹️ **Son şarkıydı, müzik durduruldu!**');
     }
 
     serverQueue.player?.stop();
-    await message.reply('⏭️ **Geçiliyor...**');
+    await interaction.reply('⏭️ **Sonraki şarkıya geçiliyor...**');
   }
 };
