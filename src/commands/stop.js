@@ -1,18 +1,23 @@
 module.exports = {
   name: 'stop',
-  description: 'Müziği durdurur',
-  aliases: ['dur'],
+  description: 'Müziği durdurur ve kanaldan çıkar',
+  cooldown: 3,
   
-  async execute(message, args, client) {
-    const serverQueue = client.queue.get(message.guild.id);
+  async execute(interaction, client) {
+    const serverQueue = client.queue.get(interaction.guild.id);
     
-    if (!serverQueue || !serverQueue.songs.length) {
-      return message.reply('❌ **Çalan müzik yok!**');
+    if (!serverQueue) {
+      return interaction.reply({ 
+        content: '❌ **Zaten kanalda değilim!**', 
+        ephemeral: true 
+      });
     }
 
     serverQueue.songs = [];
     serverQueue.player?.stop();
+    serverQueue.connection?.destroy();
+    client.queue.delete(interaction.guild.id);
     
-    await message.reply('⏹️ **Müzik durduruldu!**');
+    await interaction.reply('⏹️ **Müzik durduruldu ve kanaldan çıktım!** 👋');
   }
 };
