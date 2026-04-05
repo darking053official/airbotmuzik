@@ -103,7 +103,6 @@ function buildNowPlayingEmbed(track: QueueTrack): object {
 
 client.on('ready', async () => {
   console.log(`✅ ${client.user?.username} hazır!`);
-  console.log('Guild cache:', JSON.stringify(client.guilds));
   await registerCommands(client);
 });
 
