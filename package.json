@@ -7,11 +7,13 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "ts-node src/index.ts",
-    "render-build": "npm install && pip install yt-dlp && npm install && npm install @jubbio/core @jubbio/voice ffmpeg-static axios mongoose express dotenv && npm run build"
+    "render-build": "npm install && npm run build"
   },
   "dependencies": {
     "@jubbio/core": "latest",
-    "@jubbio/voice": "latest"
+    "@jubbio/voice": "latest",
+    "ffmpeg-static": "^5.2.0",
+    "yt-dlp-wrap": "^2.3.12"
   },
   "devDependencies": {
     "typescript": "^5.0.0",
