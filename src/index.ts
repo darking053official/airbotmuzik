@@ -1,3 +1,6 @@
+import http from 'http';
+import { execSync } from 'child_process';
+import ffmpegStatic from 'ffmpeg-static';
 import { Client, GatewayIntentBits, EmbedBuilder, Colors } from '@jubbio/core';
 import {
   joinVoiceChannel,
@@ -8,10 +11,8 @@ import {
   AudioPlayerStatus,
   VoiceConnectionStatus,
 } from '@jubbio/voice';
-import { registerCommands } from './commands';
-import { GuildQueue, QueueTrack } from './queue';
-import ffmpegStatic from 'ffmpeg-static';
-import { execSync } from 'child_process';
+import { registerCommands } from './commands/commands';
+import { GuildQueue, QueueTrack } from './commands/queue';
 
 // ffmpeg path'ini ayarla
 process.env.FFMPEG_PATH = ffmpegStatic ?? 'ffmpeg';
@@ -33,7 +34,6 @@ const client = new Client({
   ],
 });
 
-// Her sunucu için kuyruk
 const queues = new Map<string, GuildQueue>();
 
 function getQueue(guildId: string): GuildQueue {
@@ -43,7 +43,7 @@ function getQueue(guildId: string): GuildQueue {
   return queues.get(guildId)!;
 }
 
-async function playNext(guildId: string, interaction?: any) {
+async function playNext(guildId: string) {
   const queue = getQueue(guildId);
   const track = queue.next();
 
@@ -56,7 +56,7 @@ async function playNext(guildId: string, interaction?: any) {
           connection.destroy();
           queues.delete(guildId);
         }
-      }, 30000); // 30 saniye sonra kanaldan ayrıl
+      }, 30000);
     }
     return;
   }
@@ -70,14 +70,13 @@ async function playNext(guildId: string, interaction?: any) {
     playNext(guildId);
   });
 
-  // Şarkı bilgisini text channel'a gönder
-  if (queue.textChannelId && queue.textChannelSend) {
+  if (queue.textChannelSend) {
     const embed = buildNowPlayingEmbed(track);
     queue.textChannelSend(embed).catch(() => {});
   }
 }
 
-function buildNowPlayingEmbed(track: QueueTrack): any {
+function buildNowPlayingEmbed(track: QueueTrack): object {
   const minutes = Math.floor(track.duration / 60);
   const seconds = track.duration % 60;
   const durationStr = `${minutes}:${seconds.toString().padStart(2, '0')}`;
@@ -92,9 +91,7 @@ function buildNowPlayingEmbed(track: QueueTrack): any {
     )
     .setTimestamp();
 
-  if (track.thumbnail) {
-    embed.setThumbnail(track.thumbnail);
-  }
+  if (track.thumbnail) embed.setThumbnail(track.thumbnail);
 
   return { embeds: [embed] };
 }
@@ -107,19 +104,16 @@ client.on('ready', async () => {
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isCommand()) return;
 
-  const guildId = interaction.guildId;
+  const guildId: string | undefined = interaction.guildId;
   if (!guildId) return;
 
   // --- /play ---
   if (interaction.commandName === 'play') {
-    const url = interaction.options.getString('url', true);
-    const voiceChannelId = interaction.member?.voice?.channelId;
+    const url: string = interaction.options.getString('url', true);
+    const voiceChannelId: string | undefined = interaction.member?.voice?.channelId;
 
     if (!voiceChannelId) {
-      return interaction.reply({
-        content: '❌ Önce bir ses kanalına gir!',
-        ephemeral: true,
-      });
+      return interaction.reply({ content: '❌ Önce bir ses kanalına gir!', ephemeral: true });
     }
 
     await interaction.deferReply();
@@ -128,13 +122,15 @@ client.on('interactionCreate', async (interaction) => {
       const info = await probeAudioInfo(url);
       const queue = getQueue(guildId);
 
-      // Ses bağlantısı
       let connection = getVoiceConnection(guildId);
       if (!connection) {
+        const adapter = client.voice.adapters.get(guildId);
+        if (!adapter) throw new Error('Voice adapter bulunamadı.');
+
         connection = joinVoiceChannel({
           channelId: voiceChannelId,
           guildId,
-          adapterCreator: client.voice.adapters.get(guildId),
+          adapterCreator: adapter,
         });
 
         connection.on(VoiceConnectionStatus.Disconnected, () => {
@@ -160,31 +156,27 @@ client.on('interactionCreate', async (interaction) => {
         requestedBy: interaction.member?.user?.username ?? 'Bilinmiyor',
       };
 
-      // Text channel kaydet (kuyruğa ekleme bildirimi için)
-      queue.textChannelId = interaction.channelId;
-      queue.textChannelSend = (payload: any) =>
-        interaction.channel?.send(payload);
+      queue.textChannelSend = (payload: object) => interaction.channel?.send(payload);
 
       if (!queue.playing) {
         queue.tracks.push(track);
         await playNext(guildId);
 
-        const minutes = Math.floor(info.duration / 60);
-        const seconds = info.duration % 60;
-        const durationStr = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+        const mins = Math.floor(info.duration / 60);
+        const secs = info.duration % 60;
+        const dur = `${mins}:${secs.toString().padStart(2, '0')}`;
 
         const embed = new EmbedBuilder()
           .setTitle('🎵 Şu an çalıyor')
           .setDescription(`**${info.title}**`)
           .setColor(Colors.Green)
           .addFields(
-            { name: '⏱ Süre', value: durationStr, inline: true },
+            { name: '⏱ Süre', value: dur, inline: true },
             { name: '👤 Ekleyen', value: track.requestedBy, inline: true }
           )
           .setTimestamp();
 
         if (info.thumbnail) embed.setThumbnail(info.thumbnail);
-
         await interaction.editReply({ embeds: [embed] });
       } else {
         queue.tracks.push(track);
@@ -197,7 +189,6 @@ client.on('interactionCreate', async (interaction) => {
           .setTimestamp();
 
         if (info.thumbnail) embed.setThumbnail(info.thumbnail);
-
         await interaction.editReply({ embeds: [embed] });
       }
     } catch (error: any) {
@@ -211,7 +202,6 @@ client.on('interactionCreate', async (interaction) => {
     if (!queue.playing) {
       return interaction.reply({ content: '❌ Şu an bir şey çalmıyor.', ephemeral: true });
     }
-
     queue.player?.stop();
     await interaction.reply('⏭ Atlandı!');
   }
@@ -223,11 +213,8 @@ client.on('interactionCreate', async (interaction) => {
     queue.currentIndex = 0;
     queue.playing = false;
     queue.player?.stop();
-
-    const connection = getVoiceConnection(guildId);
-    connection?.destroy();
+    getVoiceConnection(guildId)?.destroy();
     queues.delete(guildId);
-
     await interaction.reply('⏹ Müzik durduruldu ve kanaldan ayrıldım.');
   }
 
@@ -256,11 +243,11 @@ client.on('interactionCreate', async (interaction) => {
     }
 
     const trackList = queue.tracks
-      .map((t, i) => {
+      .map((t: QueueTrack, i: number) => {
         const mins = Math.floor(t.duration / 60);
         const secs = t.duration % 60;
         const dur = `${mins}:${secs.toString().padStart(2, '0')}`;
-        const arrow = i === queue.currentIndex ? '▶️ ' : `${i + 1}. `;
+        const arrow = i === queue.currentIndex - 1 ? '▶️ ' : `${i + 1}. `;
         return `${arrow}**${t.title}** \`${dur}\` - ${t.requestedBy}`;
       })
       .slice(0, 10)
@@ -280,23 +267,18 @@ client.on('interactionCreate', async (interaction) => {
   else if (interaction.commandName === 'nowplaying') {
     const queue = getQueue(guildId);
     const current = queue.current();
-
     if (!current) {
       return interaction.reply({ content: '❌ Şu an bir şey çalmıyor.', ephemeral: true });
     }
-
     await interaction.reply(buildNowPlayingEmbed(current));
   }
 });
 
-client.login(process.env.BOT_TOKEN);
+client.login(process.env.BOT_TOKEN!);
 
-// Render free plan için keep-alive HTTP server
-import http from 'http';
-
-const PORT = process.env.PORT || 3000;
-
-http.createServer((req, res) => {
+// Render free plan keep-alive
+const PORT = process.env.PORT ?? 3000;
+http.createServer((_, res) => {
   res.writeHead(200);
   res.end('Bot çalışıyor!');
 }).listen(PORT, () => {
