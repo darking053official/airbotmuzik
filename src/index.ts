@@ -17,13 +17,18 @@ import { GuildQueue, QueueTrack } from './commands/queue';
 // ffmpeg path'ini ayarla
 process.env.FFMPEG_PATH = ffmpegStatic ?? 'ffmpeg';
 
-// yt-dlp binary'sini indir (ilk çalıştırmada)
-try {
-  execSync('yt-dlp --version', { stdio: 'ignore' });
-} catch {
+import path from 'path';
+import fs from 'fs';
+
+const ytDlpBin = path.join(process.cwd(), 'yt-dlp');
+if (!fs.existsSync(ytDlpBin)) {
   console.log('⬇️ yt-dlp indiriliyor...');
-  execSync('npx yt-dlp-wrap download', { stdio: 'inherit' });
+  execSync(
+    `curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o ${ytDlpBin} && chmod +x ${ytDlpBin}`,
+    { stdio: 'inherit' }
+  );
 }
+process.env.YTDLP_PATH = ytDlpBin;
 
 const client = new Client({
   intents: [
