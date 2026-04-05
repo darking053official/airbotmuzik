@@ -36,8 +36,15 @@ const commands = [
 export async function registerCommands(client: any) {
   try {
     console.log('🔄 Slash komutları kaydediliyor...');
-    await client.application?.commands.set(commands.map((c) => c.toJSON()));
-    console.log(`✅ ${commands.length} komut kaydedildi.`);
+
+    const guilds = client.guilds.cache;
+
+    for (const [guildId, guild] of guilds) {
+      await (guild as any).commands.set(commands.map((c: any) => c.toJSON()));
+      console.log(`✅ ${(guild as any).name} sunucusuna komutlar kaydedildi.`);
+    }
+
+    console.log(`✅ Toplam ${commands.length} komut kaydedildi.`);
   } catch (error) {
     console.error('❌ Komut kaydı başarısız:', error);
   }
