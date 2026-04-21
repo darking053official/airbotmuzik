@@ -41,8 +41,7 @@ const {
   createAudioResource,
   getVoiceConnection,
   AudioPlayerStatus,
-  VoiceConnectionStatus,
-  NoSubscriberBehavior
+  VoiceConnectionStatus
 } = require("@jubbio/voice");
 const { MongoClient } = require("mongodb");
 const fetch = require("node-fetch");
@@ -231,15 +230,12 @@ function getProgressBar(current, total, size = 15) {
 // ──────────────────────────────────────────────────────────────────
 // PLAYER OLUŞTURUCU
 // ──────────────────────────────────────────────────────────────────
+// Player oluşturucu - JUBBIO UYUMLU
 function getPlayer(guildId) {
   if (players.has(guildId)) return players.get(guildId);
 
-  const player = createAudioPlayer({
-    behaviors: {
-      noSubscriber: NoSubscriberBehavior.Pause,
-      maxMissedFrames: 5
-    }
-  });
+  // Jubbio'da createAudioPlayer parametresiz çalışır
+  const player = createAudioPlayer();
   
   players.set(guildId, player);
 
@@ -268,7 +264,7 @@ function getPlayer(guildId) {
         setTimeout(() => playNext(guildId), 500);
       } else {
         const ch = channels.get(guildId);
-        if (ch) ch.send({ embeds: [new EmbedBuilder().setDescription("🎵 **Kuyruk bitti!** Yeni şarkı ekleyebilirsiniz.").setColor(Colors.Blue)] }).catch(() => {});
+        if (ch) ch.send({ content: "🎵 **Kuyruk bitti!** Yeni şarkı ekleyebilirsiniz." }).catch(() => {});
       }
     } else {
       currentSongs.delete(guildId);
