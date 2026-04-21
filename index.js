@@ -310,7 +310,7 @@ function createMusicButtons(isPlaying = true, loopMode = 0) {
 // ──────────────────────────────────────────────────────────────────
 // SES URL'Sİ ALMA
 // ──────────────────────────────────────────────────────────────────
-// SES URL'Sİ ALMA - TIMEOUT DÜZELTİLMİŞ
+// SES URL'Sİ ALMA - DÜZELTİLMİŞ
 async function getAudioUrl(query, options = {}) {
   if (!YTDLP_FINAL || !fs.existsSync(YTDLP_FINAL)) {
     throw new Error("yt-dlp bulunamadı!");
@@ -318,34 +318,33 @@ async function getAudioUrl(query, options = {}) {
 
   const cookiesArg = fs.existsSync(COOKIES_PATH) ? `--cookies "${COOKIES_PATH}"` : "";
   
-  // Daha hızlı format
-  const cmd = `"${YTDLP_FINAL}" --socket-timeout 10 --no-check-certificate ${cookiesArg} -f bestaudio -g "${query}"`;
+  // EN BASİT KOMUT - sadece URL'yi al
+  const cmd = `"${YTDLP_FINAL}" ${cookiesArg} -f bestaudio --get-url --no-warnings "${query}"`;
   
-  console.log(`[yt-dlp] Komut: ${cmd}`);
+  console.log(`[yt-dlp] URL alma: ${cmd}`);
   
   try {
-    // TIMEOUT'U 15 SANİYEYE DÜŞÜR
     const audioUrl = execSync(cmd, { 
-      timeout: 15000,
+      timeout: 20000,
       encoding: 'utf8',
       stdio: ['pipe', 'pipe', 'pipe']
     }).toString().trim();
     
-    if (!audioUrl || !audioUrl.startsWith('http')) {
-      throw new Error(`Geçersiz URL`);
+    if (audioUrl && audioUrl.startsWith('http')) {
+      console.log(`[yt-dlp] URL alındı: ${audioUrl.substring(0, 60)}...`);
+      return audioUrl;
     }
     
-    console.log(`[yt-dlp] URL alındı: ${audioUrl.substring(0, 80)}...`);
-    return audioUrl;
+    throw new Error("Geçersiz URL");
     
   } catch (error) {
     console.error(`[yt-dlp] Hata: ${error.message}`);
     
-    // YEDEK KOMUT - DAHA BASİT
+    // ALTERNATİF: Daha da basit
     try {
-      const altCmd = `"${YTDLP_FINAL}" --no-playlist -g "${query}"`;
+      const altCmd = `"${YTDLP_FINAL}" -g "${query}"`;
       const audioUrl = execSync(altCmd, { 
-        timeout: 10000,
+        timeout: 15000,
         encoding: 'utf8',
         stdio: ['pipe', 'pipe', 'pipe']
       }).toString().trim();
@@ -355,53 +354,125 @@ async function getAudioUrl(query, options = {}) {
       }
     } catch (e) {}
     
-    throw new Error("Ses URL'si alınamadı");
+    // ALTERNATİF 2: yt-dlp'nin Python modülünü dene
+    try {
+      const pyCmd = `python3 -c "import yt_dlp; print(yt_dlp.YoutubeDL().extract_info('${query}', download=False)['url'])"`;
+      const audioUrl = execSync(pyCmd, { 
+        timeout: 15000,
+        encoding: 'utf8',
+        stdio: ['pipe', 'pipe', 'pipe']
+      }).toString().trim();
+      
+      if (audioUrl && audioUrl.startsWith('http')) {
+        return audioUrl;
+      }
+    } catch (e) {}
+    
+    throw new Error(`Ses URL'si alınamadı: ${error.message}`);
   }
-                }
+}
 
 // ──────────────────────────────────────────────────────────────────
 // YOUTUBE ARAMA
 // ──────────────────────────────────────────────────────────────────
-// YOUTUBE ARAMA - TIMEOUT DÜZELTİLMİŞ
+// YOUTUBE ARAMA - DÜZELTİLMİŞ (yt-dlp'siz yedek)
 async function searchYouTube(query, limit = 5) {
-  if (!YTDLP_FINAL || !fs.existsSync(YTDLP_FINAL)) {
-    throw new Error("yt-dlp bulunamadı!");
-  }
-
-  const cookiesArg = fs.existsSync(COOKIES_PATH) ? `--cookies "${COOKIES_PATH}"` : "";
-  const searchQuery = `ytsearch${limit}:${query}`;
-  const cmd = `"${YTDLP_FINAL}" ${cookiesArg} --no-playlist --no-warnings -j "${searchQuery}"`;
+  console.log(`[Arama] "${query}" aranıyor...`);
   
-  console.log(`[yt-dlp] Arama: ${cmd}`);
+  // ÖNCE yt-dlp ile dene
+  if (YTDLP_FINAL && fs.existsSync(YTDLP_FINAL)) {
+    try {
+      const cookiesArg = fs.existsSync(COOKIES_PATH) ? `--cookies "${COOKIES_PATH}"` : "";
+      const searchQuery = `ytsearch${limit}:${query}`;
+      
+      // DAHA BASİT KOMUT
+      const cmd = `"${YTDLP_FINAL}" ${cookiesArg} --flat-playlist --no-warnings --print "%(title)s||%(id)s||%(duration)s||%(uploader)s||%(view_count)s" "${searchQuery}"`;
+      
+      console.log(`[yt-dlp] Komut: ${cmd}`);
+      
+      const output = execSync(cmd, { 
+        timeout: 20000,
+        encoding: 'utf8',
+        stdio: ['pipe', 'pipe', 'pipe']
+      }).toString().trim();
+      
+      if (output) {
+        const results = output.split('\n')
+          .filter(line => line.trim())
+          .map(line => {
+            const parts = line.split('||');
+            if (parts.length >= 2) {
+              return {
+                id: parts[1],
+                title: parts[0] || 'Bilinmiyor',
+                url: `https://youtube.com/watch?v=${parts[1]}`,
+                duration: parseInt(parts[2]) || 0,
+                channel: parts[3] || 'Bilinmiyor',
+                views: parseInt(parts[4]) || 0,
+                thumbnail: `https://i.ytimg.com/vi/${parts[1]}/hqdefault.jpg`
+              };
+            }
+            return null;
+          })
+          .filter(r => r && r.id);
+        
+        if (results.length > 0) {
+          console.log(`[Arama] ${results.length} sonuç bulundu (yt-dlp)`);
+          return results;
+        }
+      }
+    } catch (e) {
+      console.error(`[yt-dlp] Arama hatası: ${e.message}`);
+    }
+  }
+  
+  // YEDEK: YouTube API'siz basit arama (sayfa scraping)
+  console.log(`[Arama] Yedek yöntem deneniyor...`);
   
   try {
-    const output = execSync(cmd, { 
-      timeout: 15000,
-      encoding: 'utf8',
-      stdio: ['pipe', 'pipe', 'pipe']
-    }).toString().trim();
+    const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
+    const response = await fetch(searchUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      }
+    });
     
-    const results = output.split('\n')
-      .filter(line => line.trim())
-      .map(line => {
-        try { return JSON.parse(line); } catch (e) { return null; }
-      })
-      .filter(r => r && r.id);
+    const html = await response.text();
     
-    return results.map(r => ({
-      id: r.id,
-      title: r.title || 'Bilinmiyor',
-      url: r.webpage_url || `https://youtube.com/watch?v=${r.id}`,
-      duration: r.duration || 0,
-      thumbnail: r.thumbnail || `https://i.ytimg.com/vi/${r.id}/hqdefault.jpg`,
-      channel: r.channel || r.uploader || 'Bilinmiyor',
-      views: r.view_count || 0
-    }));
+    // YouTube'un initial data'sını çıkar
+    const match = html.match(/var ytInitialData = ({.*?});<\/script>/);
+    if (!match) throw new Error("Veri çıkarılamadı");
     
-  } catch (error) {
-    console.error(`[yt-dlp] Arama hatası: ${error.message}`);
-    throw new Error("Arama başarısız oldu");
+    const data = JSON.parse(match[1]);
+    const contents = data.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents?.[0]?.itemSectionRenderer?.contents || [];
+    
+    const results = [];
+    for (const item of contents) {
+      const video = item.videoRenderer;
+      if (video && results.length < limit) {
+        results.push({
+          id: video.videoId,
+          title: video.title?.runs?.[0]?.text || 'Bilinmiyor',
+          url: `https://youtube.com/watch?v=${video.videoId}`,
+          duration: 0,
+          channel: video.ownerText?.runs?.[0]?.text || 'Bilinmiyor',
+          views: parseInt(video.viewCountText?.simpleText?.replace(/[^0-9]/g, '') || '0'),
+          thumbnail: video.thumbnail?.thumbnails?.[0]?.url || `https://i.ytimg.com/vi/${video.videoId}/hqdefault.jpg`
+        });
+      }
+    }
+    
+    if (results.length > 0) {
+      console.log(`[Arama] ${results.length} sonuç bulundu (yedek)`);
+      return results;
+    }
+  } catch (e) {
+    console.error(`[Arama] Yedek hata: ${e.message}`);
   }
+  
+  // EN KÖTÜ: Boş sonuç döndür
+  console.log(`[Arama] Hiç sonuç bulunamadı`);
+  return [];
       }
 
 // ──────────────────────────────────────────────────────────────────
