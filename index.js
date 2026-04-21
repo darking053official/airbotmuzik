@@ -310,30 +310,59 @@ function createMusicButtons(isPlaying = true, loopMode = 0) {
 // ──────────────────────────────────────────────────────────────────
 // SES URL'Sİ ALMA
 // ──────────────────────────────────────────────────────────────────
+// SES URL'Sİ ALMA - TIMEOUT DÜZELTİLMİŞ
 async function getAudioUrl(query, options = {}) {
   if (!YTDLP_FINAL || !fs.existsSync(YTDLP_FINAL)) {
     throw new Error("yt-dlp bulunamadı!");
   }
 
   const cookiesArg = fs.existsSync(COOKIES_PATH) ? `--cookies "${COOKIES_PATH}"` : "";
-  const format = options.format || "bestaudio[ext=m4a]/bestaudio/best";
-  const cmd = `"${YTDLP_FINAL}" ${cookiesArg} -f "${format}" --no-playlist -g "${query}"`;
+  
+  // Daha hızlı format
+  const cmd = `"${YTDLP_FINAL}" ${cookiesArg} -f "bestaudio" --no-playlist --no-warnings -g "${query}"`;
+  
+  console.log(`[yt-dlp] Komut: ${cmd}`);
   
   try {
-    const audioUrl = execSync(cmd, { timeout: 30000, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }).toString().trim();
-    if (!audioUrl || !audioUrl.startsWith('http')) throw new Error(`Geçersiz URL: ${audioUrl}`);
+    // TIMEOUT'U 15 SANİYEYE DÜŞÜR
+    const audioUrl = execSync(cmd, { 
+      timeout: 15000,
+      encoding: 'utf8',
+      stdio: ['pipe', 'pipe', 'pipe']
+    }).toString().trim();
+    
+    if (!audioUrl || !audioUrl.startsWith('http')) {
+      throw new Error(`Geçersiz URL`);
+    }
+    
+    console.log(`[yt-dlp] URL alındı: ${audioUrl.substring(0, 80)}...`);
     return audioUrl;
+    
   } catch (error) {
-    const altCmd = `"${YTDLP_FINAL}" ${cookiesArg} -f bestaudio -g "${query}"`;
-    const audioUrl = execSync(altCmd, { timeout: 30000, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }).toString().trim();
-    if (!audioUrl || !audioUrl.startsWith('http')) throw new Error(`URL alınamadı`);
-    return audioUrl;
+    console.error(`[yt-dlp] Hata: ${error.message}`);
+    
+    // YEDEK KOMUT - DAHA BASİT
+    try {
+      const altCmd = `"${YTDLP_FINAL}" --no-playlist -g "${query}"`;
+      const audioUrl = execSync(altCmd, { 
+        timeout: 10000,
+        encoding: 'utf8',
+        stdio: ['pipe', 'pipe', 'pipe']
+      }).toString().trim();
+      
+      if (audioUrl && audioUrl.startsWith('http')) {
+        return audioUrl;
+      }
+    } catch (e) {}
+    
+    throw new Error("Ses URL'si alınamadı");
   }
-}
+                }
 
 // ──────────────────────────────────────────────────────────────────
 // YOUTUBE ARAMA
 // ──────────────────────────────────────────────────────────────────
+// YOUTUBE ARAMA - TIMEOUT DÜZELTİLMİŞ
 async function searchYouTube(query, limit = 5) {
   if (!YTDLP_FINAL || !fs.existsSync(YTDLP_FINAL)) {
     throw new Error("yt-dlp bulunamadı!");
@@ -341,50 +370,69 @@ async function searchYouTube(query, limit = 5) {
 
   const cookiesArg = fs.existsSync(COOKIES_PATH) ? `--cookies "${COOKIES_PATH}"` : "";
   const searchQuery = `ytsearch${limit}:${query}`;
-  const cmd = `"${YTDLP_FINAL}" ${cookiesArg} --no-playlist -j "${searchQuery}"`;
+  const cmd = `"${YTDLP_FINAL}" ${cookiesArg} --no-playlist --no-warnings -j "${searchQuery}"`;
   
-  const output = execSync(cmd, { timeout: 30000, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }).toString().trim();
+  console.log(`[yt-dlp] Arama: ${cmd}`);
   
-  const results = output.split('\n')
-    .filter(line => line.trim())
-    .map(line => {
-      try { return JSON.parse(line); } catch (e) { return null; }
-    })
-    .filter(r => r && r.id);
-  
-  return results.map(r => ({
-    id: r.id,
-    title: r.title,
-    url: r.webpage_url || `https://youtube.com/watch?v=${r.id}`,
-    duration: r.duration || 0,
-    thumbnail: r.thumbnail || `https://i.ytimg.com/vi/${r.id}/hqdefault.jpg`,
-    channel: r.channel || r.uploader || 'Bilinmiyor',
-    views: r.view_count || 0
-  }));
-}
+  try {
+    const output = execSync(cmd, { 
+      timeout: 15000,
+      encoding: 'utf8',
+      stdio: ['pipe', 'pipe', 'pipe']
+    }).toString().trim();
+    
+    const results = output.split('\n')
+      .filter(line => line.trim())
+      .map(line => {
+        try { return JSON.parse(line); } catch (e) { return null; }
+      })
+      .filter(r => r && r.id);
+    
+    return results.map(r => ({
+      id: r.id,
+      title: r.title || 'Bilinmiyor',
+      url: r.webpage_url || `https://youtube.com/watch?v=${r.id}`,
+      duration: r.duration || 0,
+      thumbnail: r.thumbnail || `https://i.ytimg.com/vi/${r.id}/hqdefault.jpg`,
+      channel: r.channel || r.uploader || 'Bilinmiyor',
+      views: r.view_count || 0
+    }));
+    
+  } catch (error) {
+    console.error(`[yt-dlp] Arama hatası: ${error.message}`);
+    throw new Error("Arama başarısız oldu");
+  }
+      }
 
 // ──────────────────────────────────────────────────────────────────
 // ŞARKI BİLGİSİ ALMA
 // ──────────────────────────────────────────────────────────────────
+// ŞARKI BİLGİSİ ALMA - TIMEOUT DÜZELTİLMİŞ
 async function getSongInfo(url) {
   if (!YTDLP_FINAL || !fs.existsSync(YTDLP_FINAL)) {
     return { title: url, duration: 0, thumbnail: null };
   }
 
   const cookiesArg = fs.existsSync(COOKIES_PATH) ? `--cookies "${COOKIES_PATH}"` : "";
-  const cmd = `"${YTDLP_FINAL}" ${cookiesArg} --no-playlist -j "${url}"`;
+  const cmd = `"${YTDLP_FINAL}" ${cookiesArg} --no-playlist --no-warnings -j "${url}"`;
   
   try {
-    const output = execSync(cmd, { timeout: 15000, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }).toString().trim();
+    const output = execSync(cmd, { 
+      timeout: 10000,
+      encoding: 'utf8',
+      stdio: ['pipe', 'pipe', 'pipe']
+    }).toString().trim();
+    
     const data = JSON.parse(output);
     return {
       title: data.title || url,
       duration: data.duration || 0,
-      thumbnail: data.thumbnail || `https://i.ytimg.com/vi/${data.id}/hqdefault.jpg`,
+      thumbnail: data.thumbnail || (data.id ? `https://i.ytimg.com/vi/${data.id}/hqdefault.jpg` : null),
       channel: data.channel || data.uploader || 'Bilinmiyor',
       views: data.view_count || 0
     };
   } catch (e) {
+    console.error(`[yt-dlp] Bilgi hatası: ${e.message}`);
     return { title: url, duration: 0, thumbnail: null };
   }
 }
