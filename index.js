@@ -657,10 +657,19 @@ client.on("ready", async () => {
   console.log(`✅ ${client.user?.username} hazır!`);
   console.log(`📊 ${client.guilds.size} sunucuda aktif`);
   
-  client.user.setPresence({
-    activities: [{ name: "🎵 /yardim | AirBot Müzik", type: 2 }],
-    status: "online"
-  });
+  // Jubbio'da setPresence farklı - bunu kaldır veya şöyle yap:
+try {
+  if (client.user.setPresence) {
+    client.user.setPresence({
+      activities: [{ name: "🎵 /yardim | AirBot Müzik", type: 2 }],
+      status: "online"
+    });
+  } else {
+    console.log("ℹ️ Presence özelliği bu Jubbio sürümünde desteklenmiyor");
+  }
+} catch (e) {
+  // Presence özelliği yoksa sorun değil
+}
   
   await slashKaydet();
 });
