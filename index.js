@@ -440,6 +440,7 @@ async function getSongInfo(url) {
 // ──────────────────────────────────────────────────────────────────
 // ŞARKI ÇALMA
 // ──────────────────────────────────────────────────────────────────
+// ŞARKI ÇALMA - JUBBIO UYUMLU
 async function playNext(guildId) {
   const queue = queues.get(guildId) || [];
   if (!queue.length) {
@@ -453,42 +454,59 @@ async function playNext(guildId) {
   console.log(`[Müzik] Çalınıyor: ${song.title}`);
 
   try {
+    // Ses URL'sini al
     const audioUrl = await getAudioUrl(song.url);
+    console.log(`[Müzik] Ses URL: ${audioUrl.substring(0, 100)}...`);
     
-    const filter = filters.get(guildId);
-    let resource;
-    
-    if (filter && filter !== 'normal') {
-      const filterCmd = `"${ffmpeg}" -i "${audioUrl}" -af "${FILTRELER[filter]}" -f mp3 pipe:1`;
-      const ffmpegProcess = spawn(ffmpeg, ['-i', audioUrl, '-af', FILTRELER[filter], '-f', 'mp3', 'pipe:1']);
-      resource = createAudioResource(ffmpegProcess.stdout, { inlineVolume: true });
-    } else {
-      resource = createAudioResource(audioUrl, { inlineVolume: true });
-    }
+    // Jubbio'da ses kaynağı oluştur
+    const resource = createAudioResource(audioUrl);
     
     const player = getPlayer(guildId);
     
-    player.once('playing', () => {
-      currentSongs.set(guildId, { ...song, startedAt: Date.now() });
-      updateNowPlaying(guildId);
-    });
+    // ÖNEMLİ: Player'ın bağlı olduğundan emin ol
+    const conn = getVoiceConnection(guildId);
+    if (!conn) {
+      throw new Error("Ses bağlantısı yok!");
+    }
+    
+    // Player'ı bağlantıya subscribe et
+    conn.subscribe(player);
     
     player.play(resource);
+    console.log(`[Müzik] Player durumu: ${player.state.status}`);
     
+    // Ses seviyesi
     const volume = volumeLevels.get(guildId) || 100;
-    setTimeout(() => {
-      if (player.state.resource?.volume) {
-        player.state.resource.volume.setVolumeLogarithmic(volume / 100);
-      }
-    }, 200);
     
-    if (ch) {
-      await updateNowPlayingMessage(guildId, song);
-    }
+    // Çalmaya başladığında
+    player.once('stateChange', (oldState, newState) => {
+      console.log(`[Müzik] Durum değişti: ${oldState?.status} -> ${newState.status}`);
+      if (newState.status === 'playing') {
+        currentSongs.set(guildId, { ...song, startedAt: Date.now() });
+        
+        if (ch) {
+          const embed = new EmbedBuilder()
+            .setTitle("🎵 Şimdi Çalıyor")
+            .setDescription(`**${song.title}**`)
+            .setColor(Colors.Blue)
+            .addFields(
+              { name: "👤 İsteyen", value: `<@${song.requestedBy}>`, inline: true },
+              { name: "🔊 Ses", value: `${volume}%`, inline: true }
+            )
+            .setTimestamp();
+          
+          if (song.thumbnail) embed.setThumbnail(song.thumbnail);
+          
+          ch.send({ embeds: [embed], components: createMusicButtons(true, loopModes.get(guildId) || 0) }).catch(() => {});
+        }
+      }
+    });
     
   } catch (err) {
     console.error(`[Müzik] HATA:`, err.message);
-    if (ch) ch.send(`❌ Çalınamadı: ${err.message.substring(0, 100)}`).catch(() => {});
+    if (ch) ch.send(`❌ Çalınamadı: ${err.message}`).catch(() => {});
+    
+    // Hatalı şarkıyı atla
     queue.shift();
     queues.set(guildId, queue);
     if (queue.length) setTimeout(() => playNext(guildId), 1000);
