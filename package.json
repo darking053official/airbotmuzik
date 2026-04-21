@@ -1,22 +1,20 @@
 {
-  "name": "jubbio-music-bot",
-  "version": "1.0.0",
-  "description": "Jubbio m\u00fczik botu",
-  "main": "dist/index.js",
+  "name": "airbot-muzik",
+  "version": "2.0.0",
+  "description": "Profesyonel Jubbio Müzik Botu",
+  "main": "index.js",
   "scripts": {
-    "build": "tsc",
-    "start": "node dist/index.js",
-    "dev": "ts-node src/index.ts",
-    "render-build": "npm install && npm run build"
+    "start": "node index.js",
+    "postinstall": "mkdir -p /opt/render/.local/bin && curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /opt/render/.local/bin/yt-dlp && chmod +x /opt/render/.local/bin/yt-dlp"
   },
   "dependencies": {
     "@jubbio/core": "latest",
     "@jubbio/voice": "latest",
+    "mongodb": "^6.3.0",
+    "node-fetch": "^2.7.0",
     "ffmpeg-static": "^5.2.0"
   },
-  "devDependencies": {
-    "typescript": "^5.0.0",
-    "ts-node": "^10.9.0",
-    "@types/node": "^20.0.0"
+  "engines": {
+    "node": ">=18.0.0"
   }
 }
