@@ -319,7 +319,7 @@ async function getAudioUrl(query, options = {}) {
   const cookiesArg = fs.existsSync(COOKIES_PATH) ? `--cookies "${COOKIES_PATH}"` : "";
   
   // Daha hızlı format
-  const cmd = `"${YTDLP_FINAL}" ${cookiesArg} -f "bestaudio" --no-playlist --no-warnings -g "${query}"`;
+  const cmd = `"${YTDLP_FINAL}" --socket-timeout 10 --no-check-certificate ${cookiesArg} -f bestaudio -g "${query}"`;
   
   console.log(`[yt-dlp] Komut: ${cmd}`);
   
