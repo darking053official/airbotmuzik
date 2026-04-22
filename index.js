@@ -357,6 +357,7 @@ async function getSongInfo(url) {
 // ──────────────────────────────────────────────────────────────────
 // ŞARKI ÇALMA
 // ──────────────────────────────────────────────────────────────────
+// ŞARKI ÇALMA - SES SEVİYESİ AYARLI
 async function playNext(guildId) {
   const queue = queues.get(guildId) || [];
   if (!queue.length) {
@@ -371,8 +372,13 @@ async function playNext(guildId) {
 
   try {
     const audioUrl = await getAudioUrl(song.url);
+    console.log(`[Müzik] Ses URL: ${audioUrl.substring(0, 80)}...`);
     
-    const resource = createAudioResource(audioUrl);
+    // Jubbio için ses kaynağı - inlineVolume TRUE
+    const resource = createAudioResource(audioUrl, {
+      inlineVolume: true    // SES KONTROLÜ İÇİN ÖNEMLİ!
+    });
+    
     const player = getPlayer(guildId);
     
     const conn = getVoiceConnection(guildId);
@@ -383,12 +389,18 @@ async function playNext(guildId) {
     conn.subscribe(player);
     player.play(resource);
     
+    // Ses seviyesini hemen ayarla
     const volume = volumeLevels.get(guildId) || 100;
-    if (player.state.resource?.volume) {
-      player.state.resource.volume.setVolumeLogarithmic(volume / 100);
-    }
+    setTimeout(() => {
+      if (player.state.resource?.volume) {
+        player.state.resource.volume.setVolumeLogarithmic(volume / 100);
+        console.log(`[Müzik] Ses seviyesi: ${volume}%`);
+      }
+    }, 200);
     
     player.once('stateChange', (oldState, newState) => {
+      console.log(`[Müzik] Durum: ${oldState?.status} -> ${newState.status}`);
+      
       if (newState.status === 'playing') {
         currentSongs.set(guildId, { ...song, startedAt: Date.now() });
         
@@ -418,11 +430,12 @@ async function playNext(guildId) {
     queues.set(guildId, queue);
     if (queue.length) setTimeout(() => playNext(guildId), 1000);
   }
-}
+        }
 
 // ──────────────────────────────────────────────────────────────────
 // SES KANALINA BAĞLANMA
 // ──────────────────────────────────────────────────────────────────
+// SES KANALINA BAĞLANMA - MİKROFON AÇIK
 async function connectToVoice(guildId, channelId, textChannel) {
   console.log(`[Voice] Bağlanılıyor: Guild=${guildId}, Channel=${channelId}`);
   
@@ -442,20 +455,30 @@ async function connectToVoice(guildId, channelId, textChannel) {
       throw new Error("Voice adapter bulunamadı!");
     }
     
+    // Jubbio için özel ayarlar - MİKROFON AÇIK
     conn = joinVoiceChannel({ 
       channelId: channelId, 
       guildId: guildId, 
       adapterCreator: adapter,
-      selfDeaf: false,
-      selfMute: false
+      selfDeaf: false,    // Sağır modu KAPALI
+      selfMute: false,    // Mikrofon AÇIK
+      deaf: false,        // Ekstra: sağır değil
+      mute: false         // Ekstra: mikrofon açık
     });
     
     const player = getPlayer(guildId);
     conn.subscribe(player);
     channels.set(guildId, textChannel);
     
+    // Bağlantı hazır olunca ses seviyesini ayarla
     conn.on(VoiceConnectionStatus.Ready, () => {
       console.log(`[Voice] ✅ Bağlantı hazır!`);
+      
+      // Ses seviyesini hemen ayarla
+      const volume = volumeLevels.get(guildId) || 100;
+      if (player.state.resource?.volume) {
+        player.state.resource.volume.setVolumeLogarithmic(volume / 100);
+      }
     });
     
     conn.on(VoiceConnectionStatus.Disconnected, async () => {
@@ -473,7 +496,7 @@ async function connectToVoice(guildId, channelId, textChannel) {
     console.error(`[Voice] BAĞLANTI HATASI:`, error);
     throw error;
   }
-}
+    }
 
 // ──────────────────────────────────────────────────────────────────
 // SLASH KOMUTLARI
