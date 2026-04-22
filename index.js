@@ -700,22 +700,9 @@ client.on("interactionCreate", async (interaction) => {
 if (commandName === "çal") {
   const sorgu = interaction.options.getString("şarkı", true);
   
-  // Jubbio'da ses kanalı kontrolü - DÜZELTİLDİ
-  const voiceState = interaction.guild?.voiceStates?.find(v => v.userId === interaction.user.id);
-  const vcId = voiceState?.channelId;
-  
-  if (!vcId) {
-    return interaction.reply({ content: "❌ Önce bir ses kanalına girmelisin!", ephemeral: true });
-  }
-  
   await interaction.deferReply();
   
   try {
-    let conn = getVoiceConnection(interaction.guildId);
-    if (!conn) {
-      await connectToVoice(interaction.guildId, vcId, interaction.channel);
-    }
-    
     let videoUrl = sorgu;
     let songInfo = { title: sorgu, duration: 0, thumbnail: null };
     
@@ -752,29 +739,15 @@ if (commandName === "çal") {
     await interaction.editReply(`❌ Hata: ${error.message}`);
   }
   return;
-      }
+}
     
     // /ara
 if (commandName === "ara") {
   const sorgu = interaction.options.getString("şarkı", true);
   
-  // Jubbio'da ses kanalı kontrolü için alternatif yöntem
-  const voiceState = interaction.guild?.voiceStates?.find(v => v.userId === interaction.user.id);
-  const vcId = voiceState?.channelId;
-  
-  if (!vcId) {
-    return interaction.reply({ content: "❌ Önce bir ses kanalına girmelisin!", ephemeral: true });
-  }
-  
   await interaction.deferReply();
   
   try {
-    // Bot ses kanalında değilse bağlan
-    let conn = getVoiceConnection(interaction.guildId);
-    if (!conn) {
-      await connectToVoice(interaction.guildId, vcId, interaction.channel);
-    }
-    
     const results = await searchYouTube(sorgu, 5);
     if (!results.length) return interaction.editReply("❌ Sonuç bulunamadı!");
     
@@ -956,48 +929,29 @@ if (commandName === "ara") {
     
     // /ses-kanal
 if (commandName === "ses-kanal") {
-  console.log(`[SES-KANAL] Kullanıcı: ${interaction.user.username}`);
-  console.log(`[SES-KANAL] Member:`, interaction.member);
-  console.log(`[SES-KANAL] Guild:`, interaction.guild?.name);
-  console.log(`[SES-KANAL] Voice States:`, interaction.guild?.voiceStates);
-  
-  // Kullanıcının ses kanalını bul - TÜM YÖNTEMLERİ DENE
-  let vcId = null;
-  
-  // Yöntem 1
-  if (interaction.member?.voice?.channelId) {
-    vcId = interaction.member.voice.channelId;
-    console.log(`[SES-KANAL] Yöntem 1 başarılı: ${vcId}`);
-  }
-  
-  // Yöntem 2
-  if (!vcId && interaction.guild?.voiceStates) {
-    const voiceState = interaction.guild.voiceStates.find(v => v.userId === interaction.user.id);
-    vcId = voiceState?.channelId;
-    console.log(`[SES-KANAL] Yöntem 2: ${vcId || 'başarısız'}`);
-  }
-  
-  // Yöntem 3 - Direkt kullanıcı ID'si ile dene
-  if (!vcId) {
-    // Burada manuel olarak kullanıcının ID'sini kullan
-    console.log(`[SES-KANAL] Hiçbir yöntem çalışmadı!`);
-    return interaction.reply({ 
-      content: "❌ Ses kanalınız bulunamadı! Lütfen botu manuel olarak ses kanalına taşıyın.", 
-      ephemeral: true 
-    });
-  }
-  
   await interaction.deferReply({ ephemeral: true });
   
   try {
+    // Kullanıcının ses kanalını bulmaya çalış
+    let vcId = interaction.member?.voice?.channelId;
+    
+    // Bulunamazsa hata verme, direkt bağlanmayı dene
+    if (!vcId) {
+      // Belki bot zaten bir ses kanalındadır
+      const conn = getVoiceConnection(interaction.guildId);
+      if (conn) {
+        return interaction.editReply("✅ Bot zaten ses kanalında! `/çal` ile müzik başlatabilirsin.");
+      }
+      return interaction.editReply("❌ Ses kanalın bulunamadı! Lütfen botu manuel olarak ses kanalına taşı.");
+    }
+    
     await connectToVoice(interaction.guildId, vcId, interaction.channel);
     await interaction.editReply("✅ Ses kanalına bağlandım! `/çal <şarkı>` ile müzik başlatabilirsin.");
   } catch (error) {
-    console.error(`[SES-KANAL] Hata:`, error);
     await interaction.editReply(`❌ Bağlanılamadı: ${error.message}`);
   }
   return;
-    }
+}
     
     // /ayril
     if (commandName === "ayril") {
