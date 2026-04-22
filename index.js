@@ -674,95 +674,113 @@ client.on("interactionCreate", async (interaction) => {
     
     const { commandName } = interaction;
     
-    // /çal
-    if (commandName === "çal") {
-      const sorgu = interaction.options.getString("şarkı", true);
-      const vcId = interaction.member?.voice?.channelId;
-      
-      if (!vcId) return interaction.reply({ content: "❌ Önce ses kanalına girin!", ephemeral: true });
-      
-      await interaction.deferReply();
-      
-      try {
-        let conn = getVoiceConnection(interaction.guildId);
-        if (!conn) await connectToVoice(interaction.guildId, vcId, interaction.channel);
-        
-        let videoUrl = sorgu;
-        let songInfo = { title: sorgu, duration: 0, thumbnail: null };
-        
-        if (!sorgu.startsWith("http")) {
-          const results = await searchYouTube(sorgu, 1);
-          if (!results.length) return interaction.editReply(`❌ Şarkı bulunamadı!`);
-          videoUrl = results[0].url;
-          songInfo = results[0];
-        } else {
-          songInfo = await getSongInfo(videoUrl);
-        }
-        
-        const song = {
-          url: videoUrl,
-          title: songInfo.title,
-          duration: songInfo.duration,
-          thumbnail: songInfo.thumbnail,
-          requestedBy: interaction.user.id
-        };
-        
-        const queue = queues.get(interaction.guildId) || [];
-        queue.push(song);
-        queues.set(interaction.guildId, queue);
-        
-        const player = getPlayer(interaction.guildId);
-        
-        if (player.state.status === AudioPlayerStatus.Idle) {
-          await playNext(interaction.guildId);
-          await interaction.editReply(`▶️ Çalıyor: **${song.title}**`);
-        } else {
-          await interaction.editReply(`✅ Kuyruğa eklendi: **${song.title}** (Sıra: ${queue.length})`);
-        }
-      } catch (error) {
-        await interaction.editReply(`❌ Hata: ${error.message}`);
-      }
-      return;
+// /çal
+if (commandName === "çal") {
+  const sorgu = interaction.options.getString("şarkı", true);
+  
+  // Jubbio'da ses kanalı kontrolü - DÜZELTİLDİ
+  const voiceState = interaction.guild?.voiceStates?.find(v => v.userId === interaction.user.id);
+  const vcId = voiceState?.channelId;
+  
+  if (!vcId) {
+    return interaction.reply({ content: "❌ Önce bir ses kanalına girmelisin!", ephemeral: true });
+  }
+  
+  await interaction.deferReply();
+  
+  try {
+    let conn = getVoiceConnection(interaction.guildId);
+    if (!conn) {
+      await connectToVoice(interaction.guildId, vcId, interaction.channel);
     }
     
-    // /ara
-    if (commandName === "ara") {
-      const sorgu = interaction.options.getString("şarkı", true);
-      const vcId = interaction.member?.voice?.channelId;
-      
-      if (!vcId) return interaction.reply({ content: "❌ Önce ses kanalına girin!", ephemeral: true });
-      
-      await interaction.deferReply();
-      
-      try {
-        const results = await searchYouTube(sorgu, 5);
-        if (!results.length) return interaction.editReply("❌ Sonuç bulunamadı!");
-        
-        const selectMenu = new StringSelectMenuBuilder()
-          .setCustomId("muzik_ara_sec")
-          .setPlaceholder("Bir şarkı seçin...")
-          .addOptions(results.map((r, i) => new StringSelectMenuOptionBuilder()
-            .setLabel(r.title.substring(0, 100))
-            .setDescription(`${r.channel} • ${formatSure(r.duration)}`)
-            .setValue(r.url)
-            .setEmoji(i === 0 ? "🎵" : "🎶")
-          ));
-        
-        const row = new ActionRowBuilder().addComponents(selectMenu);
-        
-        const embed = new EmbedBuilder()
-          .setTitle(`🔍 Arama Sonuçları: "${sorgu}"`)
-          .setDescription(results.map((r, i) => `${i+1}. **${r.title}**\n   👤 ${r.channel} • ⏱️ ${formatSure(r.duration)}`).join("\n\n"))
-          .setColor(Colors.Blue)
-          .setThumbnail(results[0].thumbnail)
-          .setFooter({ text: "Seçim yapmak için aşağıdaki menüyü kullanın" });
-        
-        await interaction.editReply({ embeds: [embed], components: [row] });
-      } catch (error) {
-        await interaction.editReply(`❌ Hata: ${error.message}`);
-      }
-      return;
+    let videoUrl = sorgu;
+    let songInfo = { title: sorgu, duration: 0, thumbnail: null };
+    
+    if (!sorgu.startsWith("http")) {
+      const results = await searchYouTube(sorgu, 1);
+      if (!results.length) return interaction.editReply(`❌ Şarkı bulunamadı!`);
+      videoUrl = results[0].url;
+      songInfo = results[0];
+    } else {
+      songInfo = await getSongInfo(videoUrl);
     }
+    
+    const song = {
+      url: videoUrl,
+      title: songInfo.title,
+      duration: songInfo.duration,
+      thumbnail: songInfo.thumbnail,
+      requestedBy: interaction.user.id
+    };
+    
+    const queue = queues.get(interaction.guildId) || [];
+    queue.push(song);
+    queues.set(interaction.guildId, queue);
+    
+    const player = getPlayer(interaction.guildId);
+    
+    if (player.state.status === AudioPlayerStatus.Idle) {
+      await playNext(interaction.guildId);
+      await interaction.editReply(`▶️ Çalıyor: **${song.title}**`);
+    } else {
+      await interaction.editReply(`✅ Kuyruğa eklendi: **${song.title}** (Sıra: ${queue.length})`);
+    }
+  } catch (error) {
+    await interaction.editReply(`❌ Hata: ${error.message}`);
+  }
+  return;
+      }
+    
+    // /ara
+if (commandName === "ara") {
+  const sorgu = interaction.options.getString("şarkı", true);
+  
+  // Jubbio'da ses kanalı kontrolü için alternatif yöntem
+  const voiceState = interaction.guild?.voiceStates?.find(v => v.userId === interaction.user.id);
+  const vcId = voiceState?.channelId;
+  
+  if (!vcId) {
+    return interaction.reply({ content: "❌ Önce bir ses kanalına girmelisin!", ephemeral: true });
+  }
+  
+  await interaction.deferReply();
+  
+  try {
+    // Bot ses kanalında değilse bağlan
+    let conn = getVoiceConnection(interaction.guildId);
+    if (!conn) {
+      await connectToVoice(interaction.guildId, vcId, interaction.channel);
+    }
+    
+    const results = await searchYouTube(sorgu, 5);
+    if (!results.length) return interaction.editReply("❌ Sonuç bulunamadı!");
+    
+    const selectMenu = new StringSelectMenuBuilder()
+      .setCustomId("muzik_ara_sec")
+      .setPlaceholder("Bir şarkı seçin...")
+      .addOptions(results.map((r, i) => new StringSelectMenuOptionBuilder()
+        .setLabel(r.title.substring(0, 100))
+        .setDescription(`${r.channel} • ${formatSure(r.duration)}`)
+        .setValue(r.url)
+        .setEmoji(i === 0 ? "🎵" : "🎶")
+      ));
+    
+    const row = new ActionRowBuilder().addComponents(selectMenu);
+    
+    const embed = new EmbedBuilder()
+      .setTitle(`🔍 Arama Sonuçları: "${sorgu}"`)
+      .setDescription(results.map((r, i) => `${i+1}. **${r.title}**\n   👤 ${r.channel} • ⏱️ ${formatSure(r.duration)}`).join("\n\n"))
+      .setColor(Colors.Blue)
+      .setThumbnail(results[0].thumbnail)
+      .setFooter({ text: "Seçim yapmak için aşağıdaki menüyü kullanın" });
+    
+    await interaction.editReply({ embeds: [embed], components: [row] });
+  } catch (error) {
+    await interaction.editReply(`❌ Hata: ${error.message}`);
+  }
+  return;
+}
     
     // /dur
     if (commandName === "dur") {
