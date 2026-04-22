@@ -522,9 +522,18 @@ async function slashKaydet() {
 // ──────────────────────────────────────────────────────────────────
 // READY EVENT
 // ──────────────────────────────────────────────────────────────────
+// READY EVENT - DEBUG LOGLAMALI
 client.on("ready", async () => {
   console.log(`✅ ${client.user?.username} hazır!`);
   console.log(`📊 ${client.guilds.size} sunucuda aktif`);
+  
+  // DEBUG: Tüm sunucuları ve ses durumlarını logla
+  client.guilds.forEach(guild => {
+    console.log(`[DEBUG] Sunucu: ${guild.name} (${guild.id})`);
+    console.log(`[DEBUG] Voice States:`, guild.voiceStates);
+    console.log(`[DEBUG] Members:`, guild.members?.size || 'yok');
+  });
+  
   await slashKaydet();
 });
 
@@ -532,6 +541,19 @@ client.on("ready", async () => {
 // INTERACTION HANDLER
 // ──────────────────────────────────────────────────────────────────
 client.on("interactionCreate", async (interaction) => {
+  // DEBUG: Tüm interaction'ları logla
+  console.log(`[INTERACTION] Type: ${interaction.type}`);
+  console.log(`[INTERACTION] User: ${interaction.user?.username} (${interaction.user?.id})`);
+  console.log(`[INTERACTION] Guild: ${interaction.guild?.name} (${interaction.guildId})`);
+  console.log(`[INTERACTION] Member:`, interaction.member ? 'var' : 'yok');
+  console.log(`[INTERACTION] Member Voice:`, interaction.member?.voice);
+  console.log(`[INTERACTION] Guild Voice States:`, interaction.guild?.voiceStates);
+  
+  if (interaction.isCommand()) {
+    console.log(`[INTERACTION] Command: /${interaction.commandName}`);
+  }
+  
+  // .
   try {
     // BUTON HANDLER
     if (interaction.isButton() && interaction.customId.startsWith("muzik_")) {
@@ -933,18 +955,48 @@ if (commandName === "ara") {
     }
     
     // /ses-kanal
-    if (commandName === "ses-kanal") {
-      const vcId = interaction.member?.voice?.channelId;
-      if (!vcId) return interaction.reply({ content: "❌ Önce ses kanalına girin!", ephemeral: true });
-      
-      await interaction.deferReply({ ephemeral: true });
-      try {
-        await connectToVoice(interaction.guildId, vcId, interaction.channel);
-        await interaction.editReply("✅ Ses kanalına bağlandım! `/çal <şarkı>` ile müzik başlatabilirsin.");
-      } catch (error) {
-        await interaction.editReply(`❌ Bağlanılamadı: ${error.message}`);
-      }
-      return;
+if (commandName === "ses-kanal") {
+  console.log(`[SES-KANAL] Kullanıcı: ${interaction.user.username}`);
+  console.log(`[SES-KANAL] Member:`, interaction.member);
+  console.log(`[SES-KANAL] Guild:`, interaction.guild?.name);
+  console.log(`[SES-KANAL] Voice States:`, interaction.guild?.voiceStates);
+  
+  // Kullanıcının ses kanalını bul - TÜM YÖNTEMLERİ DENE
+  let vcId = null;
+  
+  // Yöntem 1
+  if (interaction.member?.voice?.channelId) {
+    vcId = interaction.member.voice.channelId;
+    console.log(`[SES-KANAL] Yöntem 1 başarılı: ${vcId}`);
+  }
+  
+  // Yöntem 2
+  if (!vcId && interaction.guild?.voiceStates) {
+    const voiceState = interaction.guild.voiceStates.find(v => v.userId === interaction.user.id);
+    vcId = voiceState?.channelId;
+    console.log(`[SES-KANAL] Yöntem 2: ${vcId || 'başarısız'}`);
+  }
+  
+  // Yöntem 3 - Direkt kullanıcı ID'si ile dene
+  if (!vcId) {
+    // Burada manuel olarak kullanıcının ID'sini kullan
+    console.log(`[SES-KANAL] Hiçbir yöntem çalışmadı!`);
+    return interaction.reply({ 
+      content: "❌ Ses kanalınız bulunamadı! Lütfen botu manuel olarak ses kanalına taşıyın.", 
+      ephemeral: true 
+    });
+  }
+  
+  await interaction.deferReply({ ephemeral: true });
+  
+  try {
+    await connectToVoice(interaction.guildId, vcId, interaction.channel);
+    await interaction.editReply("✅ Ses kanalına bağlandım! `/çal <şarkı>` ile müzik başlatabilirsin.");
+  } catch (error) {
+    console.error(`[SES-KANAL] Hata:`, error);
+    await interaction.editReply(`❌ Bağlanılamadı: ${error.message}`);
+  }
+  return;
     }
     
     // /ayril
