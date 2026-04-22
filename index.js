@@ -1,16 +1,20 @@
 // ╔══════════════════════════════════════════════════════════════════╗
-// ║                    AIRBOT MÜZİK v2.0.0                           ║
+// ║                    AIRBOT MÜZİK v3.0.0                           ║
 // ║              Profesyonel Jubbio Müzik Botu                       ║
+// ║                     Made by DRK                                  ║
 // ╚══════════════════════════════════════════════════════════════════╝
 
 const { Client, GatewayIntentBits, EmbedBuilder, Colors, ActionRowBuilder, ButtonBuilder, ButtonStyle, SlashCommandBuilder, StringSelectMenuBuilder, StringSelectMenuOptionBuilder } = require("@jubbio/core");
 const {
   joinVoiceChannel,
+  getVoiceConnection,
   createAudioPlayer,
   createAudioResource,
-  getVoiceConnection,
+  createAudioResourceFromUrl,
+  probeAudioInfo,
   AudioPlayerStatus,
-  VoiceConnectionStatus
+  VoiceConnectionStatus,
+  StreamType
 } = require("@jubbio/voice");
 const { MongoClient } = require("mongodb");
 const fetch = require("node-fetch");
@@ -20,10 +24,12 @@ const fs = require("fs");
 const path = require("path");
 const ffmpeg = require('ffmpeg-static');
 
+console.log(`🎵 ffmpeg yolu: ${ffmpeg}`);
+
 console.log("╔══════════════════════════════════════════════════════════════════╗");
 console.log("║                    AIRBOT MÜZİK BAŞLATILIYOR                     ║");
+console.log("║                        Made by DRK                               ║");
 console.log("╚══════════════════════════════════════════════════════════════════╝");
-console.log(`🎵 ffmpeg: ${ffmpeg}`);
 
 // ──────────────────────────────────────────────────────────────────
 // ENVIRONMENT VARIABLES
@@ -44,7 +50,12 @@ if (!TOKEN) {
 // ──────────────────────────────────────────────────────────────────
 http.createServer((req, res) => {
   res.writeHead(200, { "Content-Type": "application/json" });
-  res.end(JSON.stringify({ status: "online", bot: "AirBot Müzik", version: "2.0.0" }));
+  res.end(JSON.stringify({ 
+    status: "online", 
+    bot: "AirBot Müzik", 
+    version: "3.0.0",
+    author: "DRK"
+  }));
 }).listen(10000, () => console.log("🌐 HTTP sunucu çalışıyor (Port: 10000)"));
 
 // ──────────────────────────────────────────────────────────────────
@@ -143,14 +154,15 @@ const RADYO_KANALLARI = {
   "joy": { name: "Joy FM", url: "https://playerservices.streamtheworld.com/api/livestream-redirect/JOY_FM_SC" },
   "metro": { name: "Metro FM", url: "https://playerservices.streamtheworld.com/api/livestream-redirect/METRO_FM_SC" },
   "slow": { name: "Slow Türk", url: "https://radyo.slowturk.com.tr/slowturk" },
-  "alem": { name: "Alem FM", url: "https://turkmedya.radyotvonline.com/turkmedya/alemfm.stream/playlist.m3u8" }
+  "alem": { name: "Alem FM", url: "https://turkmedya.radyotvonline.com/turkmedya/alemfm.stream/playlist.m3u8" },
+  "numberone": { name: "Number One FM", url: "https://n10101m.mediatriple.net/videoonlylive/mtkgeuihrlfwlive/broadcast_5e8f1177d2fa2.smil/playlist.m3u8" }
 };
 
 // ──────────────────────────────────────────────────────────────────
 // YARDIMCI FONKSİYONLAR
 // ──────────────────────────────────────────────────────────────────
 function formatSure(saniye) {
-  if (!saniye) return "?";
+  if (!saniye || saniye === 0) return "Canlı";
   const saat = Math.floor(saniye / 3600);
   const dak = Math.floor((saniye % 3600) / 60);
   const san = saniye % 60;
@@ -159,6 +171,7 @@ function formatSure(saniye) {
 }
 
 function formatSayi(num) {
+  if (!num) return "0";
   if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
   if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
   return num.toString();
@@ -195,7 +208,7 @@ function getPlayer(guildId) {
   const player = createAudioPlayer();
   players.set(guildId, player);
 
-  player.on(AudioPlayerStatus.Idle, () => {
+  player.on('idle', () => {
     const queue = queues.get(guildId) || [];
     const loopMode = loopModes.get(guildId) || 0;
     const currentSong = currentSongs.get(guildId);
@@ -227,8 +240,8 @@ function getPlayer(guildId) {
     }
   });
 
-  player.on("error", (err) => {
-    console.error(`[Player] Hata: ${err.message}`);
+  player.on('error', (error) => {
+    console.error(`[Player] Hata:`, error.message);
     const queue = queues.get(guildId) || [];
     if (queue.length > 0) {
       queue.shift();
@@ -241,82 +254,46 @@ function getPlayer(guildId) {
 }
 
 // ──────────────────────────────────────────────────────────────────
-// SES URL'Sİ ALMA
-// ──────────────────────────────────────────────────────────────────
-async function getAudioUrl(query) {
-  if (!YTDLP_FINAL || !fs.existsSync(YTDLP_FINAL)) {
-    throw new Error("yt-dlp bulunamadı!");
-  }
-
-  const cookiesArg = fs.existsSync(COOKIES_PATH) ? `--cookies "${COOKIES_PATH}"` : "";
-  const cmd = `"${YTDLP_FINAL}" ${cookiesArg} -f bestaudio --get-url --no-warnings "${query}"`;
-  
-  console.log(`[yt-dlp] URL alma: ${cmd}`);
-  
-  try {
-    const audioUrl = execSync(cmd, { 
-      timeout: 20000,
-      encoding: 'utf8',
-      stdio: ['pipe', 'pipe', 'pipe']
-    }).toString().trim();
-    
-    if (audioUrl && audioUrl.startsWith('http')) {
-      return audioUrl;
-    }
-    throw new Error("Geçersiz URL");
-  } catch (error) {
-    const altCmd = `"${YTDLP_FINAL}" -g "${query}"`;
-    const audioUrl = execSync(altCmd, { 
-      timeout: 15000,
-      encoding: 'utf8',
-      stdio: ['pipe', 'pipe', 'pipe']
-    }).toString().trim();
-    
-    if (audioUrl && audioUrl.startsWith('http')) {
-      return audioUrl;
-    }
-    throw new Error(`Ses URL'si alınamadı`);
-  }
-}
-
-// ──────────────────────────────────────────────────────────────────
 // YOUTUBE ARAMA
 // ──────────────────────────────────────────────────────────────────
 async function searchYouTube(query, limit = 5) {
-  if (!YTDLP_FINAL || !fs.existsSync(YTDLP_FINAL)) {
-    return [];
-  }
-
-  const cookiesArg = fs.existsSync(COOKIES_PATH) ? `--cookies "${COOKIES_PATH}"` : "";
-  const searchQuery = `ytsearch${limit}:${query}`;
-  const cmd = `"${YTDLP_FINAL}" ${cookiesArg} --flat-playlist --no-warnings --print "%(title)s||%(id)s||%(duration)s||%(uploader)s" "${searchQuery}"`;
+  console.log(`[Arama] "${query}" aranıyor...`);
   
   try {
-    const output = execSync(cmd, { 
-      timeout: 20000,
-      encoding: 'utf8',
-      stdio: ['pipe', 'pipe', 'pipe']
-    }).toString().trim();
+    const results = [];
     
-    const results = output.split('\n')
-      .filter(line => line.trim())
-      .map(line => {
+    if (YTDLP_FINAL && fs.existsSync(YTDLP_FINAL)) {
+      const cookiesArg = fs.existsSync(COOKIES_PATH) ? `--cookies "${COOKIES_PATH}"` : "";
+      const searchQuery = `ytsearch${limit}:${query}`;
+      const cmd = `"${YTDLP_FINAL}" ${cookiesArg} --flat-playlist --no-warnings --print "%(title)s||%(id)s||%(duration)s||%(uploader)s||%(view_count)s" "${searchQuery}"`;
+      
+      const output = execSync(cmd, { 
+        timeout: 20000,
+        encoding: 'utf8',
+        stdio: ['pipe', 'pipe', 'pipe']
+      }).toString().trim();
+      
+      const lines = output.split('\n').filter(line => line.trim());
+      
+      for (const line of lines) {
         const parts = line.split('||');
         if (parts.length >= 2) {
-          return {
+          results.push({
             id: parts[1],
             title: parts[0] || 'Bilinmiyor',
             url: `https://youtube.com/watch?v=${parts[1]}`,
             duration: parseInt(parts[2]) || 0,
             channel: parts[3] || 'Bilinmiyor',
+            views: parseInt(parts[4]) || 0,
             thumbnail: `https://i.ytimg.com/vi/${parts[1]}/hqdefault.jpg`
-          };
+          });
         }
-        return null;
-      })
-      .filter(r => r && r.id);
+      }
+    }
     
+    console.log(`[Arama] ${results.length} sonuç bulundu`);
     return results;
+    
   } catch (e) {
     console.error(`[Arama] Hata: ${e.message}`);
     return [];
@@ -327,29 +304,16 @@ async function searchYouTube(query, limit = 5) {
 // ŞARKI BİLGİSİ ALMA
 // ──────────────────────────────────────────────────────────────────
 async function getSongInfo(url) {
-  if (!YTDLP_FINAL || !fs.existsSync(YTDLP_FINAL)) {
-    return { title: url, duration: 0, thumbnail: null };
-  }
-
-  const cookiesArg = fs.existsSync(COOKIES_PATH) ? `--cookies "${COOKIES_PATH}"` : "";
-  const cmd = `"${YTDLP_FINAL}" ${cookiesArg} --no-playlist --no-warnings -j "${url}"`;
-  
   try {
-    const output = execSync(cmd, { 
-      timeout: 10000,
-      encoding: 'utf8',
-      stdio: ['pipe', 'pipe', 'pipe']
-    }).toString().trim();
-    
-    const data = JSON.parse(output);
+    const info = await probeAudioInfo(url, YTDLP_FINAL || undefined);
     return {
-      title: data.title || url,
-      duration: data.duration || 0,
-      thumbnail: data.thumbnail || (data.id ? `https://i.ytimg.com/vi/${data.id}/hqdefault.jpg` : null),
-      channel: data.channel || data.uploader || 'Bilinmiyor',
-      views: data.view_count || 0
+      title: info.title || url,
+      duration: info.duration || 0,
+      thumbnail: info.thumbnail || null,
+      url: info.url || url
     };
   } catch (e) {
+    console.error(`[Bilgi] Hata: ${e.message}`);
     return { title: url, duration: 0, thumbnail: null };
   }
 }
@@ -357,7 +321,6 @@ async function getSongInfo(url) {
 // ──────────────────────────────────────────────────────────────────
 // ŞARKI ÇALMA
 // ──────────────────────────────────────────────────────────────────
-// ŞARKI ÇALMA - SES SEVİYESİ AYARLI
 async function playNext(guildId) {
   const queue = queues.get(guildId) || [];
   if (!queue.length) {
@@ -371,12 +334,11 @@ async function playNext(guildId) {
   console.log(`[Müzik] Çalınıyor: ${song.title}`);
 
   try {
-    const audioUrl = await getAudioUrl(song.url);
-    console.log(`[Müzik] Ses URL: ${audioUrl.substring(0, 80)}...`);
-    
-    // Jubbio için ses kaynağı - inlineVolume TRUE
-    const resource = createAudioResource(audioUrl, {
-      inlineVolume: true    // SES KONTROLÜ İÇİN ÖNEMLİ!
+    const resource = createAudioResourceFromUrl(song.url, {
+      metadata: { title: song.title, requestedBy: song.requestedBy },
+      useYtDlp: true,
+      ytDlpPath: YTDLP_FINAL || undefined,
+      inlineVolume: true
     });
     
     const player = getPlayer(guildId);
@@ -389,11 +351,10 @@ async function playNext(guildId) {
     conn.subscribe(player);
     player.play(resource);
     
-    // Ses seviyesini hemen ayarla
     const volume = volumeLevels.get(guildId) || 100;
     setTimeout(() => {
-      if (player.state.resource?.volume) {
-        player.state.resource.volume.setVolumeLogarithmic(volume / 100);
+      if (player.state.resource) {
+        player.state.resource.setVolume(volume / 100);
         console.log(`[Müzik] Ses seviyesi: ${volume}%`);
       }
     }, 200);
@@ -401,7 +362,7 @@ async function playNext(guildId) {
     player.once('stateChange', (oldState, newState) => {
       console.log(`[Müzik] Durum: ${oldState?.status} -> ${newState.status}`);
       
-      if (newState.status === 'playing') {
+      if (newState.status === AudioPlayerStatus.Playing) {
         currentSongs.set(guildId, { ...song, startedAt: Date.now() });
         
         if (ch) {
@@ -413,6 +374,7 @@ async function playNext(guildId) {
               { name: "👤 İsteyen", value: `<@${song.requestedBy}>`, inline: true },
               { name: "🔊 Ses", value: `${volume}%`, inline: true }
             )
+            .setFooter({ text: "AirBot Müzik • Made by DRK" })
             .setTimestamp();
           
           if (song.thumbnail) embed.setThumbnail(song.thumbnail);
@@ -430,12 +392,11 @@ async function playNext(guildId) {
     queues.set(guildId, queue);
     if (queue.length) setTimeout(() => playNext(guildId), 1000);
   }
-        }
+}
 
 // ──────────────────────────────────────────────────────────────────
 // SES KANALINA BAĞLANMA
 // ──────────────────────────────────────────────────────────────────
-// SES KANALINA BAĞLANMA - MİKROFON AÇIK
 async function connectToVoice(guildId, channelId, textChannel) {
   console.log(`[Voice] Bağlanılıyor: Guild=${guildId}, Channel=${channelId}`);
   
@@ -455,39 +416,28 @@ async function connectToVoice(guildId, channelId, textChannel) {
       throw new Error("Voice adapter bulunamadı!");
     }
     
-    // Jubbio için özel ayarlar - MİKROFON AÇIK
     conn = joinVoiceChannel({ 
       channelId: channelId, 
       guildId: guildId, 
       adapterCreator: adapter,
-      selfDeaf: false,    // Sağır modu KAPALI
-      selfMute: false,    // Mikrofon AÇIK
-      deaf: false,        // Ekstra: sağır değil
-      mute: false         // Ekstra: mikrofon açık
+      selfDeaf: false,
+      selfMute: false
     });
     
     const player = getPlayer(guildId);
     conn.subscribe(player);
     channels.set(guildId, textChannel);
     
-    // Bağlantı hazır olunca ses seviyesini ayarla
-    conn.on(VoiceConnectionStatus.Ready, () => {
-      console.log(`[Voice] ✅ Bağlantı hazır!`);
+    conn.on('stateChange', (oldState, newState) => {
+      console.log(`[Voice] ${oldState?.status} -> ${newState.status}`);
       
-      // Ses seviyesini hemen ayarla
-      const volume = volumeLevels.get(guildId) || 100;
-      if (player.state.resource?.volume) {
-        player.state.resource.volume.setVolumeLogarithmic(volume / 100);
+      if (newState.status === VoiceConnectionStatus.Ready) {
+        console.log(`[Voice] ✅ Bağlantı hazır!`);
       }
     });
     
-    conn.on(VoiceConnectionStatus.Disconnected, async () => {
-      queues.delete(guildId);
-      players.delete(guildId);
-      channels.delete(guildId);
-      volumeLevels.delete(guildId);
-      currentSongs.delete(guildId);
-      loopModes.delete(guildId);
+    conn.on('error', (error) => {
+      console.error(`[Voice] Hata:`, error.message);
     });
     
     return conn;
@@ -496,7 +446,46 @@ async function connectToVoice(guildId, channelId, textChannel) {
     console.error(`[Voice] BAĞLANTI HATASI:`, error);
     throw error;
   }
-    }
+}
+
+// ──────────────────────────────────────────────────────────────────
+// LYRICS ALMA
+// ──────────────────────────────────────────────────────────────────
+async function getLyrics(query) {
+  if (!GENIUS_KEY) return null;
+  
+  try {
+    const searchRes = await fetch(`https://api.genius.com/search?q=${encodeURIComponent(query)}`, {
+      headers: { 'Authorization': `Bearer ${GENIUS_KEY}` }
+    });
+    const searchData = await searchRes.json();
+    if (!searchData.response?.hits?.length) return null;
+    
+    const songUrl = searchData.response.hits[0].result.url;
+    return { url: songUrl, title: searchData.response.hits[0].result.full_title };
+  } catch (e) {
+    return null;
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────
+// GEMINI ÖNERİ
+// ──────────────────────────────────────────────────────────────────
+async function getMusicRecommendation(tur) {
+  if (!GEMINI_KEY) return null;
+  
+  try {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${GEMINI_KEY}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ contents: [{ parts: [{ text: `${tur} türünde 5 popüler şarkı öner. Sadece "Şarkı Adı - Sanatçı" formatında yaz.` }] }] })
+    });
+    const data = await res.json();
+    return data?.candidates?.[0]?.content?.parts?.[0]?.text || null;
+  } catch (e) {
+    return null;
+  }
+}
 
 // ──────────────────────────────────────────────────────────────────
 // SLASH KOMUTLARI
@@ -506,6 +495,7 @@ const SLASH_KOMUTLAR = [
   new SlashCommandBuilder().setName("ara").setDescription("Şarkı arar ve seçenek sunar").addStringOption(o => o.setName("şarkı").setDescription("Aranacak şarkı").setRequired(true)).toJSON(),
   new SlashCommandBuilder().setName("dur").setDescription("Müziği durdurur ve kuyruğu temizler").toJSON(),
   new SlashCommandBuilder().setName("geç").setDescription("Sonraki şarkıya geçer").toJSON(),
+  new SlashCommandBuilder().setName("geri").setDescription("Önceki şarkıya döner").toJSON(),
   new SlashCommandBuilder().setName("duraklat").setDescription("Müziği duraklatır").toJSON(),
   new SlashCommandBuilder().setName("devam").setDescription("Duraklatılmış müziği devam ettirir").toJSON(),
   new SlashCommandBuilder().setName("sıra").setDescription("Müzik kuyruğunu gösterir").toJSON(),
@@ -515,9 +505,18 @@ const SLASH_KOMUTLAR = [
   new SlashCommandBuilder().setName("ses-kanal").setDescription("Botu ses kanalına çeker").toJSON(),
   new SlashCommandBuilder().setName("ayril").setDescription("Botu ses kanalından çıkarır").toJSON(),
   new SlashCommandBuilder().setName("simdi").setDescription("Çalan şarkıyı gösterir").toJSON(),
+  new SlashCommandBuilder().setName("gecmis").setDescription("Çalınan şarkı geçmişini gösterir").toJSON(),
   new SlashCommandBuilder().setName("radyo").setDescription("Radyo kanalı açar").addStringOption(o => o.setName("kanal").setDescription("Radyo kanalı").addChoices(...Object.keys(RADYO_KANALLARI).map(k => ({ name: RADYO_KANALLARI[k].name, value: k }))).setRequired(true)).toJSON(),
+  new SlashCommandBuilder().setName("lyrics").setDescription("Çalan şarkının sözlerini gösterir").addStringOption(o => o.setName("şarkı").setDescription("Şarkı adı (opsiyonel)")).toJSON(),
+  new SlashCommandBuilder().setName("oneri").setDescription("Müzik önerisi yapar").addStringOption(o => o.setName("tür").setDescription("Müzik türü").addChoices({ name: "Pop", value: "pop" }, { name: "Rock", value: "rock" }, { name: "Rap", value: "rap" }, { name: "Türkçe Pop", value: "turkce-pop" }, { name: "Arabesk", value: "arabesk" }).setRequired(true)).toJSON(),
+  new SlashCommandBuilder().setName("kaydet").setDescription("Kuyruğu playlist olarak kaydeder").addStringOption(o => o.setName("isim").setDescription("Playlist adı").setRequired(true)).toJSON(),
+  new SlashCommandBuilder().setName("yukle").setDescription("Kaydedilmiş playlisti yükler").addStringOption(o => o.setName("isim").setDescription("Playlist adı").setRequired(true)).toJSON(),
+  new SlashCommandBuilder().setName("playlistler").setDescription("Kaydedilmiş playlistleri listeler").toJSON(),
+  new SlashCommandBuilder().setName("favori").setDescription("Çalan şarkıyı favorilere ekler").toJSON(),
+  new SlashCommandBuilder().setName("favoriler").setDescription("Favori listesini gösterir").toJSON(),
   new SlashCommandBuilder().setName("yardim").setDescription("Tüm komutları listeler").toJSON(),
-  new SlashCommandBuilder().setName("ping").setDescription("Bot gecikmesini gösterir").toJSON()
+  new SlashCommandBuilder().setName("ping").setDescription("Bot gecikmesini gösterir").toJSON(),
+  new SlashCommandBuilder().setName("istatistik").setDescription("Bot istatistiklerini gösterir").toJSON()
 ];
 
 // ──────────────────────────────────────────────────────────────────
@@ -545,18 +544,10 @@ async function slashKaydet() {
 // ──────────────────────────────────────────────────────────────────
 // READY EVENT
 // ──────────────────────────────────────────────────────────────────
-// READY EVENT - DEBUG LOGLAMALI
 client.on("ready", async () => {
   console.log(`✅ ${client.user?.username} hazır!`);
   console.log(`📊 ${client.guilds.size} sunucuda aktif`);
-  
-  // DEBUG: Tüm sunucuları ve ses durumlarını logla
-  client.guilds.forEach(guild => {
-    console.log(`[DEBUG] Sunucu: ${guild.name} (${guild.id})`);
-    console.log(`[DEBUG] Voice States:`, guild.voiceStates);
-    console.log(`[DEBUG] Members:`, guild.members?.size || 'yok');
-  });
-  
+  console.log(`👤 Made by DRK`);
   await slashKaydet();
 });
 
@@ -564,19 +555,6 @@ client.on("ready", async () => {
 // INTERACTION HANDLER
 // ──────────────────────────────────────────────────────────────────
 client.on("interactionCreate", async (interaction) => {
-  // DEBUG: Tüm interaction'ları logla
-  console.log(`[INTERACTION] Type: ${interaction.type}`);
-  console.log(`[INTERACTION] User: ${interaction.user?.username} (${interaction.user?.id})`);
-  console.log(`[INTERACTION] Guild: ${interaction.guild?.name} (${interaction.guildId})`);
-  console.log(`[INTERACTION] Member:`, interaction.member ? 'var' : 'yok');
-  console.log(`[INTERACTION] Member Voice:`, interaction.member?.voice);
-  console.log(`[INTERACTION] Guild Voice States:`, interaction.guild?.voiceStates);
-  
-  if (interaction.isCommand()) {
-    console.log(`[INTERACTION] Command: /${interaction.commandName}`);
-  }
-  
-  // .
   try {
     // BUTON HANDLER
     if (interaction.isButton() && interaction.customId.startsWith("muzik_")) {
@@ -642,7 +620,7 @@ client.on("interactionCreate", async (interaction) => {
           let volDown = (volumeLevels.get(guildId) || 100) - 10;
           if (volDown < 0) volDown = 0;
           volumeLevels.set(guildId, volDown);
-          if (player.state.resource?.volume) player.state.resource.volume.setVolumeLogarithmic(volDown / 100);
+          if (player.state.resource) player.state.resource.setVolume(volDown / 100);
           await interaction.reply({ content: `🔉 Ses: **${volDown}%**`, ephemeral: true });
           break;
           
@@ -650,7 +628,7 @@ client.on("interactionCreate", async (interaction) => {
           let volUp = (volumeLevels.get(guildId) || 100) + 10;
           if (volUp > 200) volUp = 200;
           volumeLevels.set(guildId, volUp);
-          if (player.state.resource?.volume) player.state.resource.volume.setVolumeLogarithmic(volUp / 100);
+          if (player.state.resource) player.state.resource.setVolume(volUp / 100);
           await interaction.reply({ content: `🔊 Ses: **${volUp}%**`, ephemeral: true });
           break;
           
@@ -661,7 +639,7 @@ client.on("interactionCreate", async (interaction) => {
             [queue[i], queue[j]] = [queue[j], queue[i]];
           }
           queues.set(guildId, queue);
-          await interaction.reply({ content: `🔀 Kuyruk karıştırıldı! (${queue.length} şarkı)`, ephemeral: true });
+          await interaction.reply({ content: `🔀 Kuyruk karıştırıldı!`, ephemeral: true });
           break;
           
         case "clear":
@@ -675,24 +653,21 @@ client.on("interactionCreate", async (interaction) => {
     // SELECT MENU HANDLER
     if (interaction.isStringSelectMenu() && interaction.customId === "muzik_ara_sec") {
       const url = interaction.values[0];
-      const vcId = interaction.member?.voice?.channelId;
-      
-      if (!vcId) return interaction.reply({ content: "❌ Önce ses kanalına girin!", ephemeral: true });
       
       await interaction.deferReply();
       
       try {
         let conn = getVoiceConnection(interaction.guildId);
-        if (!conn) await connectToVoice(interaction.guildId, vcId, interaction.channel);
+        if (!conn) {
+          return interaction.editReply("❌ Bot ses kanalında değil! Lütfen botu ses kanalına sürükleyin.");
+        }
         
         const songInfo = await getSongInfo(url);
         const song = {
-          url,
+          url: songInfo.url || url,
           title: songInfo.title,
           duration: songInfo.duration,
           thumbnail: songInfo.thumbnail,
-          channel: songInfo.channel,
-          views: songInfo.views,
           requestedBy: interaction.user.id
         };
         
@@ -719,86 +694,91 @@ client.on("interactionCreate", async (interaction) => {
     
     const { commandName } = interaction;
     
-// /çal
-if (commandName === "çal") {
-  const sorgu = interaction.options.getString("şarkı", true);
-  
-  await interaction.deferReply();
-  
-  try {
-    let videoUrl = sorgu;
-    let songInfo = { title: sorgu, duration: 0, thumbnail: null };
-    
-    if (!sorgu.startsWith("http")) {
-      const results = await searchYouTube(sorgu, 1);
-      if (!results.length) return interaction.editReply(`❌ Şarkı bulunamadı!`);
-      videoUrl = results[0].url;
-      songInfo = results[0];
-    } else {
-      songInfo = await getSongInfo(videoUrl);
+    // /çal
+    if (commandName === "çal") {
+      const sorgu = interaction.options.getString("şarkı", true);
+      
+      await interaction.deferReply();
+      
+      try {
+        let conn = getVoiceConnection(interaction.guildId);
+        if (!conn) {
+          return interaction.editReply("❌ Bot ses kanalında değil! Lütfen botu ses kanalına sürükleyin veya `/ses-kanal` yazın.");
+        }
+        
+        let videoUrl = sorgu;
+        let songInfo = { title: sorgu, duration: 0, thumbnail: null };
+        
+        if (!sorgu.startsWith("http")) {
+          const results = await searchYouTube(sorgu, 1);
+          if (!results.length) return interaction.editReply(`❌ Şarkı bulunamadı!`);
+          videoUrl = results[0].url;
+          songInfo = results[0];
+        } else {
+          songInfo = await getSongInfo(videoUrl);
+        }
+        
+        const song = {
+          url: videoUrl,
+          title: songInfo.title,
+          duration: songInfo.duration,
+          thumbnail: songInfo.thumbnail,
+          requestedBy: interaction.user.id
+        };
+        
+        const queue = queues.get(interaction.guildId) || [];
+        queue.push(song);
+        queues.set(interaction.guildId, queue);
+        
+        const player = getPlayer(interaction.guildId);
+        
+        if (player.state.status === AudioPlayerStatus.Idle) {
+          await playNext(interaction.guildId);
+          await interaction.editReply(`▶️ Çalıyor: **${song.title}**`);
+        } else {
+          await interaction.editReply(`✅ Kuyruğa eklendi: **${song.title}** (Sıra: ${queue.length})`);
+        }
+      } catch (error) {
+        await interaction.editReply(`❌ Hata: ${error.message}`);
+      }
+      return;
     }
-    
-    const song = {
-      url: videoUrl,
-      title: songInfo.title,
-      duration: songInfo.duration,
-      thumbnail: songInfo.thumbnail,
-      requestedBy: interaction.user.id
-    };
-    
-    const queue = queues.get(interaction.guildId) || [];
-    queue.push(song);
-    queues.set(interaction.guildId, queue);
-    
-    const player = getPlayer(interaction.guildId);
-    
-    if (player.state.status === AudioPlayerStatus.Idle) {
-      await playNext(interaction.guildId);
-      await interaction.editReply(`▶️ Çalıyor: **${song.title}**`);
-    } else {
-      await interaction.editReply(`✅ Kuyruğa eklendi: **${song.title}** (Sıra: ${queue.length})`);
-    }
-  } catch (error) {
-    await interaction.editReply(`❌ Hata: ${error.message}`);
-  }
-  return;
-}
     
     // /ara
-if (commandName === "ara") {
-  const sorgu = interaction.options.getString("şarkı", true);
-  
-  await interaction.deferReply();
-  
-  try {
-    const results = await searchYouTube(sorgu, 5);
-    if (!results.length) return interaction.editReply("❌ Sonuç bulunamadı!");
-    
-    const selectMenu = new StringSelectMenuBuilder()
-      .setCustomId("muzik_ara_sec")
-      .setPlaceholder("Bir şarkı seçin...")
-      .addOptions(results.map((r, i) => new StringSelectMenuOptionBuilder()
-        .setLabel(r.title.substring(0, 100))
-        .setDescription(`${r.channel} • ${formatSure(r.duration)}`)
-        .setValue(r.url)
-        .setEmoji(i === 0 ? "🎵" : "🎶")
-      ));
-    
-    const row = new ActionRowBuilder().addComponents(selectMenu);
-    
-    const embed = new EmbedBuilder()
-      .setTitle(`🔍 Arama Sonuçları: "${sorgu}"`)
-      .setDescription(results.map((r, i) => `${i+1}. **${r.title}**\n   👤 ${r.channel} • ⏱️ ${formatSure(r.duration)}`).join("\n\n"))
-      .setColor(Colors.Blue)
-      .setThumbnail(results[0].thumbnail)
-      .setFooter({ text: "Seçim yapmak için aşağıdaki menüyü kullanın" });
-    
-    await interaction.editReply({ embeds: [embed], components: [row] });
-  } catch (error) {
-    await interaction.editReply(`❌ Hata: ${error.message}`);
-  }
-  return;
-}
+    if (commandName === "ara") {
+      const sorgu = interaction.options.getString("şarkı", true);
+      
+      await interaction.deferReply();
+      
+      try {
+        const results = await searchYouTube(sorgu, 5);
+        if (!results.length) return interaction.editReply("❌ Sonuç bulunamadı!");
+        
+        const selectMenu = new StringSelectMenuBuilder()
+          .setCustomId("muzik_ara_sec")
+          .setPlaceholder("Bir şarkı seçin...")
+          .addOptions(results.map((r, i) => new StringSelectMenuOptionBuilder()
+            .setLabel(r.title.substring(0, 100))
+            .setDescription(`${r.channel} • ${formatSure(r.duration)}`)
+            .setValue(r.url)
+            .setEmoji(i === 0 ? "🎵" : "🎶")
+          ));
+        
+        const row = new ActionRowBuilder().addComponents(selectMenu);
+        
+        const embed = new EmbedBuilder()
+          .setTitle(`🔍 Arama Sonuçları: "${sorgu}"`)
+          .setDescription(results.map((r, i) => `${i+1}. **${r.title}**\n   👤 ${r.channel} • 👁️ ${formatSayi(r.views)} • ⏱️ ${formatSure(r.duration)}`).join("\n\n"))
+          .setColor(Colors.Blue)
+          .setThumbnail(results[0].thumbnail)
+          .setFooter({ text: "AirBot Müzik • Made by DRK" });
+        
+        await interaction.editReply({ embeds: [embed], components: [row] });
+      } catch (error) {
+        await interaction.editReply(`❌ Hata: ${error.message}`);
+      }
+      return;
+    }
     
     // /dur
     if (commandName === "dur") {
@@ -826,6 +806,24 @@ if (commandName === "ara") {
       const player = getPlayer(interaction.guildId);
       player.stop();
       await interaction.reply("⏭️ Şarkı atlandı!");
+      return;
+    }
+    
+    // /geri
+    if (commandName === "geri") {
+      const history = historyQueues.get(interaction.guildId) || [];
+      if (!history.length) return interaction.reply({ content: "❌ Geçmiş şarkı yok!", ephemeral: true });
+      
+      const previousSong = history[0];
+      const queue = queues.get(interaction.guildId) || [];
+      queue.unshift(previousSong);
+      queues.set(interaction.guildId, queue);
+      
+      history.shift();
+      historyQueues.set(interaction.guildId, history);
+      
+      getPlayer(interaction.guildId).stop();
+      await interaction.reply(`⏮️ Önceki şarkıya dönülüyor: **${previousSong.title}**`);
       return;
     }
     
@@ -879,7 +877,8 @@ if (commandName === "ara") {
       const embed = new EmbedBuilder()
         .setTitle("🎶 Müzik Kuyruğu")
         .setDescription(description || "Kuyruk boş")
-        .setColor(Colors.Blue);
+        .setColor(Colors.Blue)
+        .setFooter({ text: "AirBot Müzik • Made by DRK" });
       
       await interaction.reply({ embeds: [embed] });
       return;
@@ -905,8 +904,8 @@ if (commandName === "ara") {
       volumeLevels.set(interaction.guildId, seviye);
       
       const player = getPlayer(interaction.guildId);
-      if (player.state.resource?.volume) {
-        player.state.resource.volume.setVolumeLogarithmic(seviye / 100);
+      if (player.state.resource) {
+        player.state.resource.setVolume(seviye / 100);
       }
       
       await interaction.reply(`🔊 Ses seviyesi: **${seviye}%**`);
@@ -939,9 +938,10 @@ if (commandName === "ara") {
         .setColor(Colors.Blue)
         .addFields(
           { name: "👤 İsteyen", value: `<@${song.requestedBy}>`, inline: true },
-          { name: "⏱️ Süre", value: song.duration ? formatSure(song.duration) : "Canlı", inline: true },
+          { name: "⏱️ Süre", value: formatSure(song.duration), inline: true },
           { name: "🔊 Ses", value: `${volume}%`, inline: true }
         )
+        .setFooter({ text: "AirBot Müzik • Made by DRK" })
         .setTimestamp();
       
       if (song.thumbnail) embed.setThumbnail(song.thumbnail);
@@ -950,31 +950,35 @@ if (commandName === "ara") {
       return;
     }
     
-    // /ses-kanal
-if (commandName === "ses-kanal") {
-  await interaction.deferReply({ ephemeral: true });
-  
-  try {
-    // Kullanıcının ses kanalını bulmaya çalış
-    let vcId = interaction.member?.voice?.channelId;
-    
-    // Bulunamazsa hata verme, direkt bağlanmayı dene
-    if (!vcId) {
-      // Belki bot zaten bir ses kanalındadır
-      const conn = getVoiceConnection(interaction.guildId);
-      if (conn) {
-        return interaction.editReply("✅ Bot zaten ses kanalında! `/çal` ile müzik başlatabilirsin.");
-      }
-      return interaction.editReply("❌ Ses kanalın bulunamadı! Lütfen botu manuel olarak ses kanalına taşı.");
+    // /gecmis
+    if (commandName === "gecmis") {
+      const history = historyQueues.get(interaction.guildId) || [];
+      if (!history.length) return interaction.reply({ content: "📭 Geçmiş boş!", ephemeral: true });
+      
+      const embed = new EmbedBuilder()
+        .setTitle("📜 Çalınan Şarkı Geçmişi")
+        .setDescription(history.slice(0, 10).map((s, i) => `**${i+1}.** ${s.title} - <@${s.requestedBy}>`).join("\n"))
+        .setColor(Colors.Blue)
+        .setFooter({ text: "AirBot Müzik • Made by DRK" });
+      
+      await interaction.reply({ embeds: [embed] });
+      return;
     }
     
-    await connectToVoice(interaction.guildId, vcId, interaction.channel);
-    await interaction.editReply("✅ Ses kanalına bağlandım! `/çal <şarkı>` ile müzik başlatabilirsin.");
-  } catch (error) {
-    await interaction.editReply(`❌ Bağlanılamadı: ${error.message}`);
-  }
-  return;
-}
+    // /ses-kanal
+    if (commandName === "ses-kanal") {
+      const vcId = interaction.member?.voice?.channelId;
+      if (!vcId) return interaction.reply({ content: "❌ Önce bir ses kanalına girmelisin!", ephemeral: true });
+      
+      await interaction.deferReply({ ephemeral: true });
+      try {
+        await connectToVoice(interaction.guildId, vcId, interaction.channel);
+        await interaction.editReply("✅ Ses kanalına bağlandım! `/çal <şarkı>` ile müzik başlatabilirsin.");
+      } catch (error) {
+        await interaction.editReply(`❌ Bağlanılamadı: ${error.message}`);
+      }
+      return;
+    }
     
     // /ayril
     if (commandName === "ayril") {
@@ -998,15 +1002,16 @@ if (commandName === "ses-kanal") {
     // /radyo
     if (commandName === "radyo") {
       const kanal = interaction.options.getString("kanal", true);
-      const vcId = interaction.member?.voice?.channelId;
-      
-      if (!vcId) return interaction.reply({ content: "❌ Önce ses kanalına girin!", ephemeral: true });
       
       await interaction.deferReply();
       
       try {
         let conn = getVoiceConnection(interaction.guildId);
-        if (!conn) await connectToVoice(interaction.guildId, vcId, interaction.channel);
+        if (!conn) {
+          const vcId = interaction.member?.voice?.channelId;
+          if (!vcId) return interaction.editReply("❌ Önce bir ses kanalına girin!");
+          await connectToVoice(interaction.guildId, vcId, interaction.channel);
+        }
         
         const radyo = RADYO_KANALLARI[kanal];
         const resource = createAudioResource(radyo.url);
@@ -1019,12 +1024,166 @@ if (commandName === "ses-kanal") {
           .setTitle("📻 Radyo")
           .setDescription(`**${radyo.name}** yayında!`)
           .setColor(Colors.Green)
-          .setFooter({ text: "🎵 Canlı yayın" });
+          .setFooter({ text: "AirBot Müzik • Made by DRK" });
         
         await interaction.editReply({ embeds: [embed] });
       } catch (error) {
         await interaction.editReply(`❌ Radyo başlatılamadı: ${error.message}`);
       }
+      return;
+    }
+    
+    // /lyrics
+    if (commandName === "lyrics") {
+      let query = interaction.options.getString("şarkı");
+      if (!query) {
+        const song = currentSongs.get(interaction.guildId);
+        if (!song) return interaction.reply({ content: "❌ Çalan şarkı yok! Şarkı adı belirtin.", ephemeral: true });
+        query = song.title;
+      }
+      
+      await interaction.deferReply();
+      const lyrics = await getLyrics(query);
+      
+      if (lyrics) {
+        const embed = new EmbedBuilder()
+          .setTitle("📝 Şarkı Sözleri")
+          .setDescription(`**${lyrics.title}**\n\n[🔗 Genius'da görüntüle](${lyrics.url})`)
+          .setColor(Colors.Purple)
+          .setFooter({ text: "AirBot Müzik • Made by DRK" });
+        await interaction.editReply({ embeds: [embed] });
+      } else {
+        await interaction.editReply("❌ Şarkı sözü bulunamadı!");
+      }
+      return;
+    }
+    
+    // /oneri
+    if (commandName === "oneri") {
+      const tur = interaction.options.getString("tür", true);
+      await interaction.deferReply();
+      
+      const oneri = await getMusicRecommendation(tur);
+      if (oneri) {
+        const embed = new EmbedBuilder()
+          .setTitle(`🎵 ${tur.toUpperCase()} Önerileri`)
+          .setDescription(oneri)
+          .setColor(Colors.Purple)
+          .setFooter({ text: "AirBot Müzik • Gemini AI" });
+        await interaction.editReply({ embeds: [embed] });
+      } else {
+        await interaction.editReply("❌ Öneri alınamadı!");
+      }
+      return;
+    }
+    
+    // /kaydet
+    if (commandName === "kaydet") {
+      if (!db) return interaction.reply({ content: "❌ Veritabanı bağlantısı yok!", ephemeral: true });
+      
+      const isim = interaction.options.getString("isim", true);
+      const queue = queues.get(interaction.guildId) || [];
+      
+      if (!queue.length) return interaction.reply({ content: "❌ Kuyruk boş!", ephemeral: true });
+      
+      await db.collection("playlistler").updateOne(
+        { guildId: interaction.guildId, userId: interaction.user.id, name: isim },
+        { $set: { songs: queue, createdAt: new Date() } },
+        { upsert: true }
+      );
+      
+      await interaction.reply(`💾 Kuyruk **"${isim}"** adıyla kaydedildi! (${queue.length} şarkı)`);
+      return;
+    }
+    
+    // /yukle
+    if (commandName === "yukle") {
+      if (!db) return interaction.reply({ content: "❌ Veritabanı bağlantısı yok!", ephemeral: true });
+      
+      const isim = interaction.options.getString("isim", true);
+      
+      await interaction.deferReply();
+      
+      const playlist = await db.collection("playlistler").findOne({
+        guildId: interaction.guildId,
+        userId: interaction.user.id,
+        name: isim
+      });
+      
+      if (!playlist) return interaction.editReply(`❌ **"${isim}"** adında playlist bulunamadı!`);
+      
+      const queue = queues.get(interaction.guildId) || [];
+      queue.push(...playlist.songs);
+      queues.set(interaction.guildId, queue);
+      
+      const player = getPlayer(interaction.guildId);
+      
+      if (player.state.status === AudioPlayerStatus.Idle) {
+        await playNext(interaction.guildId);
+      }
+      
+      await interaction.editReply(`📂 **"${isim}"** playlisti yüklendi! (${playlist.songs.length} şarkı)`);
+      return;
+    }
+    
+    // /playlistler
+    if (commandName === "playlistler") {
+      if (!db) return interaction.reply({ content: "❌ Veritabanı bağlantısı yok!", ephemeral: true });
+      
+      const playlists = await db.collection("playlistler").find({
+        guildId: interaction.guildId,
+        userId: interaction.user.id
+      }).toArray();
+      
+      if (!playlists.length) return interaction.reply({ content: "📭 Hiç playlist kaydedilmemiş!", ephemeral: true });
+      
+      const embed = new EmbedBuilder()
+        .setTitle("📂 Playlistleriniz")
+        .setDescription(playlists.map((p, i) => `**${i+1}.** ${p.name} - ${p.songs?.length || 0} şarkı`).join("\n"))
+        .setColor(Colors.Blue)
+        .setFooter({ text: "AirBot Müzik • Made by DRK" });
+      
+      await interaction.reply({ embeds: [embed], ephemeral: true });
+      return;
+    }
+    
+    // /favori
+    if (commandName === "favori") {
+      if (!db) return interaction.reply({ content: "❌ Veritabanı bağlantısı yok!", ephemeral: true });
+      
+      const song = currentSongs.get(interaction.guildId);
+      if (!song) return interaction.reply({ content: "❌ Çalan şarkı yok!", ephemeral: true });
+      
+      await db.collection("favoriler").updateOne(
+        { guildId: interaction.guildId, userId: interaction.user.id },
+        { $addToSet: { songs: { ...song, addedAt: new Date() } } },
+        { upsert: true }
+      );
+      
+      await interaction.reply(`❤️ **${song.title}** favorilere eklendi!`);
+      return;
+    }
+    
+    // /favoriler
+    if (commandName === "favoriler") {
+      if (!db) return interaction.reply({ content: "❌ Veritabanı bağlantısı yok!", ephemeral: true });
+      
+      const favorites = await db.collection("favoriler").findOne({
+        guildId: interaction.guildId,
+        userId: interaction.user.id
+      });
+      
+      if (!favorites?.songs?.length) {
+        return interaction.reply({ content: "📭 Favori listeniz boş!", ephemeral: true });
+      }
+      
+      const embed = new EmbedBuilder()
+        .setTitle("❤️ Favori Şarkılarınız")
+        .setDescription(favorites.songs.map((s, i) => `**${i+1}.** ${s.title}`).join("\n"))
+        .setColor(Colors.Red)
+        .setFooter({ text: "AirBot Müzik • Made by DRK" });
+      
+      await interaction.reply({ embeds: [embed], ephemeral: true });
       return;
     }
     
@@ -1035,13 +1194,15 @@ if (commandName === "ses-kanal") {
         .setDescription("Profesyonel Jubbio Müzik Botu")
         .setColor(Colors.Blue)
         .addFields(
-          { name: "▶️ Müzik Kontrol", value: "`/çal` `/ara` `/dur` `/geç` `/duraklat` `/devam`", inline: false },
-          { name: "📋 Kuyruk", value: "`/sıra` `/karistir` `/simdi`", inline: false },
+          { name: "▶️ Müzik Kontrol", value: "`/çal` `/ara` `/dur` `/geç` `/geri` `/duraklat` `/devam`", inline: false },
+          { name: "📋 Kuyruk", value: "`/sıra` `/karistir` `/simdi` `/gecmis`", inline: false },
           { name: "🔊 Ses Kontrol", value: "`/ses` `/loop`", inline: false },
           { name: "🔌 Bağlantı", value: "`/ses-kanal` `/ayril`", inline: false },
-          { name: "🎸 Diğer", value: "`/radyo` `/ping` `/yardim`", inline: false }
+          { name: "📂 Playlist", value: "`/kaydet` `/yukle` `/playlistler`", inline: false },
+          { name: "❤️ Favoriler", value: "`/favori` `/favoriler`", inline: false },
+          { name: "🎸 Diğer", value: "`/radyo` `/lyrics` `/oneri` `/ping` `/istatistik`", inline: false }
         )
-        .setFooter({ text: "AirBot Müzik v2.0.0 • Butonlarla da kontrol edebilirsiniz!" })
+        .setFooter({ text: "AirBot Müzik v3.0.0 • Made by DRK" })
         .setTimestamp();
       
       await interaction.reply({ embeds: [embed] });
@@ -1053,6 +1214,29 @@ if (commandName === "ses-kanal") {
       const start = Date.now();
       await interaction.reply({ content: "🏓 Ölçülüyor...", ephemeral: true });
       await interaction.editReply(`🏓 Pong! \`${Date.now() - start}ms\``);
+      return;
+    }
+    
+    // /istatistik
+    if (commandName === "istatistik") {
+      let totalSongs = 0;
+      for (const queue of queues.values()) totalSongs += queue.length;
+      
+      const embed = new EmbedBuilder()
+        .setTitle("📊 Bot İstatistikleri")
+        .setColor(Colors.Green)
+        .addFields(
+          { name: "🎵 Aktif Müzik", value: `${queues.size} sunucu`, inline: true },
+          { name: "📋 Toplam Kuyruk", value: `${totalSongs} şarkı`, inline: true },
+          { name: "🌐 Sunucu", value: `${client.guilds.size} sunucu`, inline: true },
+          { name: "⏱️ Uptime", value: formatSure(Math.floor(process.uptime())), inline: true },
+          { name: "🎛️ yt-dlp", value: YTDLP_FINAL && fs.existsSync(YTDLP_FINAL) ? "✅ Aktif" : "❌ Yok", inline: true },
+          { name: "💾 MongoDB", value: db ? "✅ Bağlı" : "❌ Yok", inline: true }
+        )
+        .setFooter({ text: "AirBot Müzik v3.0.0 • Made by DRK" })
+        .setTimestamp();
+      
+      await interaction.reply({ embeds: [embed] });
       return;
     }
     
@@ -1076,4 +1260,5 @@ process.on("uncaughtException", (err) => console.error("❌ Exception:", err.mes
 // BAŞLAT
 // ──────────────────────────────────────────────────────────────────
 console.log("🚀 AirBot Müzik başlatılıyor...");
+console.log("👤 Made by DRK");
 client.login(TOKEN);
